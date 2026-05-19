@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>matExplico - Frazioni Passo Passo per DSA</title>
+    <!-- Caricamento Font Andika per alta leggibilità -->
+    <link href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app" class="container">
+        <header>
+            <h1>matExplico: Le Frazioni</h1>
+        </header>
+
+        <main>
+            <!-- Fase 1: Input e Operatore -->
+            <section id="phase1" class="phase active">
+                <h2>1. Scegli l'operazione e il numero di frazioni</h2>
+                
+                <div class="setup-controls">
+                    <div class="operator-selection" aria-label="Selezione operazione">
+                        <button class="op-btn" data-op="+">+</button>
+                        <button class="op-btn" data-op="-">-</button>
+                        <button class="op-btn" data-op="*">×</button>
+                        <button class="op-btn" data-op="/">÷</button>
+                    </div>
+                    
+                    <div class="fraction-count-controls">
+                        <button id="btn-add-fraction" class="qty-btn">+ Aggiungi Frazione</button>
+                        <button id="btn-remove-fraction" class="qty-btn secondary">- Rimuovi Frazione</button>
+                    </div>
+                </div>
+
+                <div id="fractions-row" class="fractions-input-row">
+                    <!-- Popolato dinamicamente da JavaScript -->
+                </div>
+                
+                <div class="action-container">
+                    <button id="btn-analyze" class="action-btn">Analizza Frazioni ➔</button>
+                </div>
+            </section>
+
+            <!-- Fase 2: Analisi Concettuale -->
+            <section id="phase2" class="phase">
+                <h2>2. Cosa abbiamo davanti?</h2>
+                <div id="analysis-content" class="analysis-box">
+                    <!-- Spiegazione generata dinamicamente -->
+                </div>
+                <div class="action-container">
+                    <button id="btn-start-calc" class="action-btn">Inizia il calcolo passo passo ➔</button>
+                </div>
+            </section>
+
+            <!-- Fase 3: Risoluzione Guidata -->
+            <section id="phase3" class="phase">
+                <h2>3. Risoluzione Guidata</h2>
+                
+                <div class="calculation-board" aria-live="polite" id="step-visual-container" style="position: relative;">
+                    <div id="step-visual" class="visual-board">
+                        <!-- Calcolo visuale generato dinamicamente -->
+                    </div>
+                </div>
+                
+                <div class="explanation-box">
+                    <p id="step-description" class="fade-target-desc"></p>
+                </div>
+
+                <div class="controls">
+                    <button id="btn-prev-step" class="control-btn secondary">◀ Passaggio</button>
+                    <button id="btn-prev-frame" class="control-btn secondary">◀ Frame</button>
+                    <button id="btn-play-animation" class="control-btn secondary">▶ Avvia</button>
+                    <button id="btn-next-frame" class="control-btn secondary">Frame ▶</button>
+                    <button id="btn-next-step" class="control-btn primary">Passaggio ▶</button>
+                    <button id="btn-toggle-pies" class="control-btn secondary">📊 Mostra Torte</button>
+                    <button id="btn-new-calc" class="control-btn secondary">Nuovo Calcolo</button>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

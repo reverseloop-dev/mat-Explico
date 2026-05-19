@@ -1,0 +1,1457 @@
+let currentSteps = [];
+let currentStepIndex = 0;
+let selectedOp = null;
+let fractionCount = 2;
+
+// --- SYSTEMA ANIMAZIONE ---
+let animationInterval = null;
+let isAnimating = false;
+let currentAnimFrame = 0;
+let renderedFrameIndex = -1;
+
+// --- UTILITY MATEMATICHE ---
+const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+const lcm = (a, b) => (a * b) / gcd(a, b);
+
+const getFractionType = (n, d) => {
+    if (d === 0) return "non definita";
+    if (n % d === 0) return "apparente";
+    if (Math.abs(n) < Math.abs(d)) return "propria";
+    return "impropria";
+};
+
+const getFractionDescription = (n, d, label) => {
+    const type = getFractionType(n, d);
+    if (type === "apparente") {
+        return `La ${label} (<strong>${n}/${d}</strong>) è una <strong>frazione apparente</strong>: il numeratore (${n}) è un multiplo del denominatore (${d}) o uguale ad esso. Rappresenta uno o più interi esatti.`;
+    } else if (type === "propria") {
+        return `La ${label} (<strong>${n}/${d}</strong>) è una <strong>frazione propria</strong>: il numeratore (${n}) è più piccolo del denominatore (${d}). Rappresenta una quantità minore di un intero.`;
+    } else {
+        return `La ${label} (<strong>${n}/${d}</strong>) è una <strong>frazione impropria</strong>: il numeratore (${n}) è più grande del denominatore (${d}). Rappresenta una quantità maggiore di un intero.`;
+    }
+};
+
+// --- GESTIONE DEI NUMERI DI FRAZIONI (Fase 1 Dinamica) ---
+
+function getAndSaveValues() {
+    let vals = [];
+    for (let i = 1; i <= 4; i++) {
+        const num = document.getElementById(`num${i}`);
+        const den = document.getElementById(`den${i}`);
+        if (num && den) {
+            vals.push({ num: num.value, den: den.value });
+        }
+    }
+    return vals;
+}
+
+function restoreValues(vals) {
+    vals.forEach((v, idx) => {
+        const i = idx + 1;
+        const num = document.getElementById(`num${i}`);
+        const den = document.getElementById(`den${i}`);
+        if (num && den) {
+            num.value = v.num;
+            den.value = v.den;
+        }
+    });
+}
+
+function renderInputs() {
+    const container = document.getElementById('fractions-row');
+    container.innerHTML = '';
+    
+    let opSymbol = '+';
+    if (selectedOp === '*') opSymbol = '×';
+    else if (selectedOp === '/') opSymbol = '÷';
+    else if (selectedOp) opSymbol = selectedOp;
+    
+    for (let i = 1; i <= fractionCount; i++) {
+        if (i > 1) {
+            const opLabel = document.createElement('div');
+            opLabel.className = 'op-label';
+            opLabel.textContent = opSymbol;
+            container.appendChild(opLabel);
+        }
+        
+        const fracDiv = document.createElement('div');
+        fracDiv.className = 'fraction-input';
+        fracDiv.innerHTML = `
+            <label for="num${i}" class="sr-only">Numeratore frazione ${i}</label>
+            <input type="number" id="num${i}" placeholder="Num" aria-label="Numeratore frazione ${i}">
+            <div class="fraction-line"></div>
+            <label for="den${i}" class="sr-only">Denominatore frazione ${i}</label>
+            <input type="number" id="den${i}" placeholder="Den" aria-label="Denominatore frazione ${i}">
+        `;
+        container.appendChild(fracDiv);
+    }
+    
+    document.getElementById('btn-add-fraction').disabled = (fractionCount >= 4);
+    document.getElementById('btn-remove-fraction').disabled = (fractionCount <= 2);
+}
+
+// --- CONNETTORI GRAFICI SVG ---
+
+function clearVisualConnectors() {
+    const svg = document.getElementById('connector-svg');
+    if (svg) svg.innerHTML = '';
+}
+
+function drawVisualConnector(fromId, toId, opText) {
+    const parent = document.getElementById('step-visual-container');
+    if (!parent) return;
+    
+    let svg = document.getElementById('connector-svg');
+    if (!svg) {
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.id = 'connector-svg';
+        svg.style.position = 'absolute';
+        svg.style.top = '0';
+        svg.style.left = '0';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.pointerEvents = 'none';
+        svg.style.zIndex = '10';
+        parent.appendChild(svg);
+    }
+    svg.innerHTML = ''; // Pulisci
+    
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    defs.innerHTML = `
+        <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="var(--accent-red)"/>
+        </marker>
+    `;
+    svg.appendChild(defs);
+    
+    const fromEl = document.getElementById(fromId);
+    const toEl = document.getElementById(toId);
+    if (!fromEl || !toEl) return;
+    
+    const parentRect = parent.getBoundingClientRect();
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const x1_ctr = fromRect.left - parentRect.left + fromRect.width / 2;
+    const y1_ctr = fromRect.top - parentRect.top + fromRect.height / 2;
+    const x2_ctr = toRect.left - parentRect.left + toRect.width / 2;
+    const y2_ctr = toRect.top - parentRect.top + toRect.height / 2;
+    
+    // Controlla se gli elementi appartengono alla stessa frazione (allineati verticalmente)
+    const isVertical = Math.abs(x1_ctr - x2_ctr) < 15;
+    
+    let x1, y1, x2, y2, cx, cy;
+    
+    if (isVertical) {
+        // Disegna una freccia esterna che curva a sinistra della frazione
+        const sideOffset = 22; // Raggio esterno dei numeri cerchiati
+        const curveOffset = 45; // Distanza laterale della curva
+        
+        x1 = x1_ctr - sideOffset;
+        y1 = y1_ctr;
+        
+        // Se andiamo verso l'alto (da denominatore a numeratore), lasciamo spazio extra per la punta della freccia
+        const isUpwards = y1_ctr > y2_ctr;
+        x2 = x2_ctr - (sideOffset + (isUpwards ? 4 : 0));
+        y2 = y2_ctr;
+        
+        cx = x1_ctr - curveOffset;
+        cy = (y1_ctr + y2_ctr) / 2;
+    } else {
+        // Calcolo dinamico basato sul raggio del riquadro dell'elemento (ellisse)
+        // per supportare numeri larghi a più cifre (es. 1598)
+        const Rx1 = (fromRect.width || 44) / 2;
+        const Ry1 = (fromRect.height || 44) / 2;
+        const Rx2 = (toRect.width || 44) / 2;
+        const Ry2 = (toRect.height || 44) / 2;
+        
+        // Calcola una stima del punto di controllo superiore
+        const midX = (x1_ctr + x2_ctr) / 2;
+        const tempCy = Math.min(y1_ctr, y2_ctr) - 40;
+        
+        // Angolo dal centro dell'elemento 1 verso il punto di controllo
+        const angle1 = Math.atan2(tempCy - y1_ctr, midX - x1_ctr);
+        // Angolo dal punto di controllo verso il centro dell'elemento 2
+        const angle2 = Math.atan2(y2_ctr - tempCy, x2_ctr - midX);
+        
+        // Punti di attacco sui bordi delle ellissi, con un margine di rispetto extra (6px all'inizio, 12px alla fine per la punta)
+        x1 = x1_ctr + (Rx1 + 6) * Math.cos(angle1);
+        y1 = y1_ctr + (Ry1 + 6) * Math.sin(angle1);
+        
+        x2 = x2_ctr - (Rx2 + 12) * Math.cos(angle2);
+        y2 = y2_ctr - (Ry2 + 12) * Math.sin(angle2);
+        
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        cx = x1 + dx / 2;
+        cy = Math.min(y1, y2) - 40;
+    }
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'var(--accent-red)');
+    path.setAttribute('stroke-width', '4');
+    path.setAttribute('marker-end', 'url(#arrow)');
+    path.setAttribute('stroke-dasharray', '8,4');
+    svg.appendChild(path);
+    
+    if (opText) {
+        // Centra il rettangolo dello sfondo in base alla lunghezza del testo dell'operatore
+        const textWidth = opText.length * 10 + 16;
+        const textBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        textBg.setAttribute('x', cx - textWidth / 2);
+        textBg.setAttribute('y', cy - 14);
+        textBg.setAttribute('width', textWidth);
+        textBg.setAttribute('height', 28);
+        textBg.setAttribute('fill', '#FFFDD0'); // Stesso sfondo crema dell'app
+        textBg.setAttribute('rx', 6);
+        svg.appendChild(textBg);
+ 
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', cx);
+        text.setAttribute('y', cy + 7);
+        text.setAttribute('fill', 'var(--accent-red)');
+        text.setAttribute('font-size', '1.3rem');
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('text-anchor', 'middle');
+        text.style.fontFamily = "'Andika', sans-serif";
+        text.textContent = opText;
+        svg.appendChild(text);
+    }
+}
+
+// Ridimensionamento responsive per connettori grafici
+window.addEventListener('resize', () => {
+    if (isAnimating && renderedFrameIndex !== -1) {
+        const step = currentSteps[currentStepIndex];
+        const frame = step.animation[renderedFrameIndex];
+        if (frame && frame.connector) {
+            clearVisualConnectors();
+            if (Array.isArray(frame.connector)) {
+                frame.connector.forEach(conn => {
+                    drawVisualConnector(conn.from, conn.to, conn.text);
+                });
+            } else {
+                drawVisualConnector(frame.connector.from, frame.connector.to, frame.connector.text);
+            }
+        }
+    }
+});
+
+// --- GESTIONE DEI PASSAGGI DI RISOLUZIONE ---
+
+function buildStepsAddSub(fractions, op) {
+    let dens = fractions.map(f => f.den);
+    let mcm = dens.reduce((acc, d) => lcm(acc, d), dens[0]);
+    let newNums = fractions.map(f => (mcm / f.den) * f.num);
+    
+    let res_n = newNums[0];
+    for (let i = 1; i < newNums.length; i++) {
+        if (op === '+') res_n += newNums[i];
+        else res_n -= newNums[i];
+    }
+    
+    let opWord = op === '+' ? 'sommare' : 'sottrarre';
+    let steps = [];
+    
+    // --- Passaggio 1: Trova MCM ---
+    let step1Blocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step1Blocks.push({ type: 'op', val: op, dim: ['val'] });
+        step1Blocks.push({ type: 'frac', n: f.num, d: f.den, hl: ['d'], dim: ['n', 'line'] });
+    });
+    step1Blocks.push({ type: 'op', val: '=', dim: ['val'] });
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step1Blocks.push({ type: 'op', val: op, dim: ['val'] });
+        step1Blocks.push({ type: 'frac', n: '?', d: mcm, hl: ['d'], dim: ['n', 'line'] });
+    });
+    
+    let anim1 = [];
+    // Frame 0: focus vecchi denominatori cerchiati
+    let f1_0 = JSON.parse(JSON.stringify(step1Blocks));
+    f1_0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            if (b.type === 'frac') b.circle = ['d'];
+            b.hl = ['d']; b.dim = ['n', 'line'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    anim1.push({ txtId: 'a-txt-0-s1', blocks: f1_0 });
+    
+    // Frame 1: focus spiegazione MCM
+    let f1_1 = JSON.parse(JSON.stringify(step1Blocks));
+    f1_1.forEach((b, idx) => {
+        if (b.type === 'frac') b.circle = ['d'];
+    });
+    anim1.push({ txtId: 'a-txt-1-s1', blocks: f1_1 });
+    
+    // Frame 2: focus nuovi denominatori cerchiati + Freccia da vecchio a nuovo
+    let f1_2 = JSON.parse(JSON.stringify(step1Blocks));
+    f1_2.forEach((b, idx) => {
+        if (idx >= 2*fractions.length) {
+            if (b.type === 'frac') b.circle = ['d'];
+            b.hl = ['d']; b.dim = ['n', 'line'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    anim1.push({ 
+        txtId: 'a-txt-2-s1', 
+        blocks: f1_2, 
+        connector: { from: 'block-0-d', to: `block-${2*fractions.length}-d`, text: 'MCM' } 
+    });
+    
+    steps.push({
+        description: `<span id="a-txt-0-s1" class="anim-text"><strong>Passaggio 1:</strong> Troviamo il Minimo Comune Denominatore (MCM) tra i denominatori (${dens.join(', ')}).</span><br>` +
+                     `<span id="a-txt-1-s1" class="anim-text">Il numero più piccolo divisibile per tutti è <strong>${mcm}</strong>.</span><br>` +
+                     `<span id="a-txt-2-s1" class="anim-text">Scriviamo il nuovo denominatore sotto ciascuna frazione.</span>`,
+        blocks: step1Blocks,
+        animation: anim1
+    });
+    
+    // --- Passaggi da 2 a N+1: Conversione di ciascuna frazione ---
+    let currentRightNums = fractions.map(() => '?');
+    for (let i = 0; i < fractions.length; i++) {
+        currentRightNums[i] = newNums[i];
+        
+        let stepBlocks = [];
+        // Sinistra
+        fractions.forEach((f, idx) => {
+            if (idx > 0) stepBlocks.push({ type: 'op', val: op, dim: ['val'] });
+            if (idx === i) {
+                stepBlocks.push({ type: 'frac', n: f.num, d: f.den, hl: ['n', 'd'], dim: ['line'] });
+            } else {
+                stepBlocks.push({ type: 'frac', n: f.num, d: f.den, dim: ['n', 'd', 'line'] });
+            }
+        });
+        stepBlocks.push({ type: 'op', val: '=', dim: ['val'] });
+        // Destra
+        fractions.forEach((f, idx) => {
+            if (idx > 0) stepBlocks.push({ type: 'op', val: op, dim: ['val'] });
+            if (idx === i) {
+                stepBlocks.push({ type: 'frac', n: newNums[idx], d: mcm, hl: ['n', 'd'], dim: ['line'] });
+            } else {
+                stepBlocks.push({ type: 'frac', n: currentRightNums[idx], d: mcm, dim: ['n', 'd', 'line'] });
+            }
+        });
+        
+        let animFrames = [];
+        
+        // Frame 0: Trasformiamo la frazione (cerchia le due frazioni intere e mostra freccia "Trasforma")
+        let f0Blocks = JSON.parse(JSON.stringify(stepBlocks));
+        f0Blocks.forEach((b, idx) => {
+            let isOldI = (idx === 2 * i);
+            let isNewI = (idx === 2 * fractions.length + 2 * i);
+            if (isOldI || isNewI) {
+                b.hl = ['n', 'd', 'line']; b.dim = [];
+                b.circle = ['frac'];
+            } else {
+                b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+            }
+        });
+        animFrames.push({ 
+            txtId: `a-txt-0-s${i}`, 
+            blocks: f0Blocks,
+            connector: { from: `block-${2 * i}`, to: `block-${2 * fractions.length + 2 * i}`, text: 'Trasforma ➔' }
+        });
+        
+        // Frame 1: Dividiamo il nuovo denom per quello vecchio (cerchia i denom, freccia divisione)
+        let f1Blocks = JSON.parse(JSON.stringify(stepBlocks));
+        f1Blocks.forEach((b, idx) => {
+            let isOldI = (idx === 2 * i);
+            let isNewI = (idx === 2 * fractions.length + 2 * i);
+            if (isOldI || isNewI) {
+                b.hl = ['d']; b.dim = ['n', 'line'];
+                b.circle = ['d'];
+            } else {
+                b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+            }
+        });
+        animFrames.push({ 
+            txtId: `a-txt-1-s${i}`, 
+            blocks: f1Blocks,
+            connector: { from: `block-${2 * fractions.length + 2 * i}-d`, to: `block-${2 * i}-d`, text: '÷' }
+        });
+        
+        // Frame 2: Moltiplichiamo per il vecchio numeratore (cerchia denom e num vecchio, freccia moltiplica)
+        let f2Blocks = JSON.parse(JSON.stringify(stepBlocks));
+        f2Blocks.forEach((b, idx) => {
+            let isOldI = (idx === 2 * i);
+            let isNewI = (idx === 2 * fractions.length + 2 * i);
+            if (isOldI) {
+                b.hl = ['n', 'd']; b.dim = ['line'];
+                b.circle = ['n', 'd'];
+            } else if (isNewI) {
+                b.hl = ['d']; b.dim = ['n', 'line'];
+                b.circle = ['d'];
+            } else {
+                b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+            }
+        });
+        animFrames.push({ 
+            txtId: `a-txt-2-s${i}`, 
+            blocks: f2Blocks,
+            connector: { from: `block-${2 * i}-d`, to: `block-${2 * i}-n`, text: '×' }
+        });
+        
+        // Frame 3: Scriviamo il risultato (cerchia frazione finale, freccia "Scrivi result")
+        let f3Blocks = JSON.parse(JSON.stringify(stepBlocks));
+        f3Blocks.forEach((b, idx) => {
+            let isNewI = (idx === 2 * fractions.length + 2 * i);
+            if (isNewI) {
+                b.hl = ['n', 'd', 'line']; b.dim = [];
+                b.circle = ['frac'];
+            } else {
+                b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+            }
+        });
+        animFrames.push({ 
+            txtId: `a-txt-3-s${i}`, 
+            blocks: f3Blocks,
+            connector: { from: `block-${2 * i}-n`, to: `block-${2 * fractions.length + 2 * i}-n`, text: `➔ Scrivi ${newNums[i]}` }
+        });
+        
+        steps.push({
+            description: `<span id="a-txt-0-s${i}" class="anim-text"><strong>Passaggio ${i + 2}:</strong> Trasformiamo la frazione numero ${i + 1}.</span><br>` +
+                         `<span id="a-txt-1-s${i}" class="anim-text">Dividiamo il nuovo denominatore (${mcm}) per quello vecchio (${fractions[i].den})</span> ` +
+                         `<span id="a-txt-2-s${i}" class="anim-text">e moltiplichiamo per il numeratore (${fractions[i].num}).</span><br>` +
+                         `<span id="a-txt-3-s${i}" class="anim-text">(${mcm} ÷ ${fractions[i].den}) × ${fractions[i].num} = <strong>${newNums[i]}</strong>.</span>`,
+            blocks: stepBlocks,
+            animation: animFrames
+        });
+    }
+    
+    // --- Passaggio N+2: Somma dei numeratori ---
+    let stepCombineBlocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) stepCombineBlocks.push({ type: 'op', val: op, dim: ['val'] });
+        stepCombineBlocks.push({ type: 'frac', n: f.num, d: f.den, dim: ['n', 'd', 'line'] });
+    });
+    stepCombineBlocks.push({ type: 'op', val: '=', dim: ['val'] });
+    newNums.forEach((n, idx) => {
+        if (idx > 0) stepCombineBlocks.push({ type: 'op', val: op, hl: ['val'] });
+        stepCombineBlocks.push({ type: 'frac', n: n, d: mcm, hl: ['n'], dim: ['d', 'line'] });
+    });
+    stepCombineBlocks.push({ type: 'op', val: '=', dim: ['val'] });
+    stepCombineBlocks.push({ type: 'frac', n: res_n, d: mcm, hl: ['n'], dim: ['d', 'line'] });
+    
+    let calcStr = newNums.join(` ${op} `);
+    
+    let animCombineFrames = [];
+    // Frame 0: Focus frazioni convertite cerchiando i numeratori
+    let fc0 = JSON.parse(JSON.stringify(stepCombineBlocks));
+    fc0.forEach((b, idx) => {
+        let isConvertedFrac = (idx >= 2*fractions.length && idx < stepCombineBlocks.length - 2 && idx % 2 === 0);
+        if (isConvertedFrac) {
+            b.hl = ['n']; b.dim = ['d', 'line'];
+            b.circle = ['n'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animCombineFrames.push({ txtId: 'ac-txt-0', blocks: fc0 });
+    
+    // Frame 1: Focus calcolo
+    let fc1 = JSON.parse(JSON.stringify(stepCombineBlocks));
+    fc1.forEach((b, idx) => {
+        let isConvertedFrac = (idx >= 2*fractions.length && idx < stepCombineBlocks.length - 2 && idx % 2 === 0);
+        let isConvertedOp = (idx >= 2*fractions.length && idx < stepCombineBlocks.length - 2 && idx % 2 !== 0);
+        if (isConvertedFrac) {
+            b.hl = ['n']; b.dim = ['d', 'line'];
+            b.circle = ['n'];
+        } else if (isConvertedOp) {
+            b.hl = ['val']; b.dim = [];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animCombineFrames.push({ txtId: 'ac-txt-1', blocks: fc1 });
+    
+    // Frame 2: Focus risultato finale
+    let fc2 = JSON.parse(JSON.stringify(stepCombineBlocks));
+    fc2.forEach((b, idx) => {
+        let isFinalFrac = (idx === stepCombineBlocks.length - 1);
+        if (isFinalFrac) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            b.circle = ['n'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animCombineFrames.push({ 
+        txtId: 'ac-txt-2', 
+        blocks: fc2,
+        connector: { from: `block-${stepCombineBlocks.length - 3}-n`, to: `block-${stepCombineBlocks.length - 1}-n`, text: '=' }
+    });
+    
+    steps.push({
+        description: `<span id="ac-txt-0" class="anim-text"><strong>Passaggio ${fractions.length + 2}:</strong> Ora che tutte le frazioni hanno lo stesso denominatore, possiamo ${opWord} i numeratori...</span><br>` +
+                     `<span id="ac-txt-1" class="anim-text">calcolando: ${calcStr}</span> ` +
+                     `<span id="ac-txt-2" class="anim-text">= <strong>${res_n}</strong> mantenendo lo stesso denominatore.</span>`,
+        blocks: stepCombineBlocks,
+        animation: animCombineFrames
+    });
+    
+    // --- Passaggio N+3: Risultato finale ---
+    let stepFinalBlocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) stepFinalBlocks.push({ type: 'op', val: op, dim: [] });
+        stepFinalBlocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+    });
+    stepFinalBlocks.push({ type: 'op', val: '=', dim: [] });
+    stepFinalBlocks.push({ type: 'frac', n: res_n, d: mcm, hl: ['n', 'd', 'line'], dim: [] });
+    
+    let animFinalFrames = [];
+    let ff0 = JSON.parse(JSON.stringify(stepFinalBlocks));
+    ff0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            if (b.type === 'frac') b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animFinalFrames.push({ txtId: 'af-txt-0', blocks: ff0 });
+    
+    let ff1 = JSON.parse(JSON.stringify(stepFinalBlocks));
+    ff1.forEach((b, idx) => {
+        if (idx === stepFinalBlocks.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animFinalFrames.push({ 
+        txtId: 'af-txt-1', 
+        blocks: ff1,
+        connector: { from: 'block-0', to: `block-${stepFinalBlocks.length - 1}`, text: '=' }
+    });
+    
+    steps.push({
+        description: `<span id="af-txt-0" class="anim-text"><strong>Finito!</strong> L'operazione è completa.</span><br>` +
+                     `<span id="af-txt-1" class="anim-text">Il risultato finale è <strong>${res_n}/${mcm}</strong>.</span>`,
+        blocks: stepFinalBlocks,
+        animation: animFinalFrames
+    });
+    
+    return steps;
+}
+
+function buildStepsMul(fractions) {
+    let res_n = fractions.reduce((acc, f) => acc * f.num, 1);
+    let res_d = fractions.reduce((acc, f) => acc * f.den, 1);
+    
+    let numsStr = fractions.map(f => f.num).join(' × ');
+    let densStr = fractions.map(f => f.den).join(' × ');
+    
+    // Step 1: Numeratori
+    let step1Blocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step1Blocks.push({ type: 'op', val: '×', hl: ['val'] });
+        step1Blocks.push({ type: 'frac', n: f.num, d: f.den, hl: ['n'], dim: ['d', 'line'] });
+    });
+    step1Blocks.push({ type: 'op', val: '=', dim: ['val'] });
+    step1Blocks.push({ type: 'frac', n: res_n, d: '?', hl: ['n'], dim: ['d', 'line'] });
+    
+    let animMul1 = [];
+    let m1_0 = JSON.parse(JSON.stringify(step1Blocks));
+    m1_0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            if (b.type === 'frac') {
+                b.hl = ['n']; b.dim = ['d', 'line'];
+                b.circle = ['n'];
+            } else if (b.type === 'op') {
+                b.hl = ['val']; b.dim = [];
+            }
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animMul1.push({ txtId: 'm1-txt-0', blocks: m1_0 });
+    
+    let m1_1 = JSON.parse(JSON.stringify(step1Blocks));
+    m1_1.forEach((b, idx) => {
+        if (idx === step1Blocks.length - 1) {
+            b.hl = ['n']; b.dim = ['d', 'line'];
+            b.circle = ['n'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animMul1.push({ 
+        txtId: 'm1-txt-1', 
+        blocks: m1_1,
+        connector: { from: `block-${2*fractions.length - 2}-n`, to: `block-${step1Blocks.length - 1}-n`, text: '=' }
+    });
+    
+    // Step 2: Denominatori
+    let step2Blocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step2Blocks.push({ type: 'op', val: '×', hl: ['val'] });
+        step2Blocks.push({ type: 'frac', n: f.num, d: f.den, hl: ['d'], dim: ['n', 'line'] });
+    });
+    step2Blocks.push({ type: 'op', val: '=', dim: ['val'] });
+    step2Blocks.push({ type: 'frac', n: res_n, d: res_d, hl: ['d'], dim: ['n', 'line'] });
+    
+    let animMul2 = [];
+    let m2_0 = JSON.parse(JSON.stringify(step2Blocks));
+    m2_0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            if (b.type === 'frac') {
+                b.hl = ['d']; b.dim = ['n', 'line'];
+                b.circle = ['d'];
+            } else if (b.type === 'op') {
+                b.hl = ['val']; b.dim = [];
+            }
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animMul2.push({ txtId: 'm2-txt-0', blocks: m2_0 });
+    
+    let m2_1 = JSON.parse(JSON.stringify(step2Blocks));
+    m2_1.forEach((b, idx) => {
+        if (idx === step2Blocks.length - 1) {
+            b.hl = ['d']; b.dim = ['n', 'line'];
+            b.circle = ['d'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animMul2.push({ 
+        txtId: 'm2-txt-1', 
+        blocks: m2_1,
+        connector: { from: `block-${2*fractions.length - 2}-d`, to: `block-${step2Blocks.length - 1}-d`, text: '=' }
+    });
+    
+    // Step 3: Finale
+    let step3Blocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step3Blocks.push({ type: 'op', val: '×', dim: [] });
+        step3Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+    });
+    step3Blocks.push({ type: 'op', val: '=', dim: [] });
+    step3Blocks.push({ type: 'frac', n: res_n, d: res_d, hl: ['n', 'd', 'line'], dim: [] });
+    
+    let animMul3 = [];
+    let m3_0 = JSON.parse(JSON.stringify(step3Blocks));
+    m3_0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            if (b.type === 'frac') b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animMul3.push({ txtId: 'm3-txt-0', blocks: m3_0 });
+    
+    let m3_1 = JSON.parse(JSON.stringify(step3Blocks));
+    m3_1.forEach((b, idx) => {
+        if (idx === step3Blocks.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animMul3.push({ 
+        txtId: 'm3-txt-1', 
+        blocks: m3_1,
+        connector: { from: 'block-0', to: `block-${step3Blocks.length - 1}`, text: '=' }
+    });
+    
+    return [
+        {
+            description: `<span id="m1-txt-0" class="anim-text"><strong>Passaggio 1:</strong> Nella moltiplicazione si moltiplicano tutti i numeratori tra loro.</span><br>` +
+                         `<span id="m1-txt-1" class="anim-text">${numsStr} = <strong>${res_n}</strong>.</span>`,
+            blocks: step1Blocks,
+            animation: animMul1
+        },
+        {
+            description: `<span id="m2-txt-0" class="anim-text"><strong>Passaggio 2:</strong> Poi si moltiplicano tutti i denominatori tra loro.</span><br>` +
+                         `<span id="m2-txt-1" class="anim-text">${densStr} = <strong>${res_d}</strong>.</span>`,
+            blocks: step2Blocks,
+            animation: animMul2
+        },
+        {
+            description: `<span id="m3-txt-0" class="anim-text"><strong>Finito!</strong> L'operazione è completa.</span><br>` +
+                         `<span id="m3-txt-1" class="anim-text">Il risultato della moltiplicazione è <strong>${res_n}/${res_d}</strong>.</span>`,
+            blocks: step3Blocks,
+            animation: animMul3
+        }
+    ];
+}
+
+function buildStepsDiv(fractions) {
+    let transformed = fractions.map((f, idx) => {
+        if (idx === 0) return { num: f.num, den: f.den };
+        return { num: f.den, den: f.num };
+    });
+    
+    let res_n = transformed.reduce((acc, f) => acc * f.num, 1);
+    let res_d = transformed.reduce((acc, f) => acc * f.den, 1);
+    
+    let numsStr = transformed.map(f => f.num).join(' × ');
+    let densStr = transformed.map(f => f.den).join(' × ');
+    
+    // Step 1: Inversione
+    let step1Blocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step1Blocks.push({ type: 'op', val: '÷', hl: ['val'] });
+        if (idx > 0) {
+            step1Blocks.push({ 
+                type: 'frac', 
+                n: f.num + ' <span class="arrow-red">↳</span>', 
+                d: f.den + ' <span class="arrow-red">↗</span>', 
+                hl: ['n', 'd'], 
+                dim: ['line'] 
+            });
+        } else {
+            step1Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+        }
+    });
+    step1Blocks.push({ type: 'op', val: '→', hl: ['val'] });
+    transformed.forEach((f, idx) => {
+        if (idx > 0) step1Blocks.push({ type: 'op', val: '×', hl: ['val'] });
+        if (idx > 0) {
+            step1Blocks.push({ 
+                type: 'frac', 
+                n: '<span class="arrow-red">↗</span> ' + f.num, 
+                d: '<span class="arrow-red">↳</span> ' + f.den, 
+                hl: ['n', 'd'], 
+                dim: ['line'] 
+            });
+        } else {
+            step1Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+        }
+    });
+    
+    let animDiv1 = [];
+    // Frame 0: Divisione originale
+    let d1_0 = JSON.parse(JSON.stringify(step1Blocks));
+    d1_0.forEach((b, idx) => {
+        if (idx >= 2*fractions.length && idx < step1Blocks.length) {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        } else {
+            if (idx > 0) {
+                b.hl = b.type === 'frac' ? ['n', 'd'] : ['val'];
+                if (b.type === 'frac') b.circle = ['frac'];
+            }
+        }
+    });
+    animDiv1.push({ txtId: 'd1-txt-0', blocks: d1_0 });
+    
+    // Frame 1: Inversione (frecce rosse)
+    let d1_1 = JSON.parse(JSON.stringify(step1Blocks));
+    d1_1.forEach((b, idx) => {
+        if (idx > 0 && idx < 2*fractions.length && b.type === 'frac') b.circle = ['frac'];
+        if (idx >= 2*fractions.length + 1 && b.type === 'frac') b.circle = ['frac'];
+    });
+    animDiv1.push({ 
+        txtId: 'd1-txt-1', 
+        blocks: d1_1,
+        connector: { from: 'block-2', to: `block-${2*fractions.length + 2}`, text: 'Inverti ↻' }
+    });
+    
+    // Frame 2: Moltiplicazione risultante
+    let d1_2 = JSON.parse(JSON.stringify(step1Blocks));
+    d1_2.forEach((b, idx) => {
+        if (idx < 2*fractions.length) {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        } else {
+            b.hl = b.type === 'frac' ? ['n', 'd', 'line'] : ['val']; b.dim = [];
+            if (b.type === 'frac') b.circle = ['frac'];
+        }
+    });
+    animDiv1.push({ txtId: 'd1-txt-2', blocks: d1_2 });
+    
+    let mulSteps = buildStepsMul(transformed);
+    
+    let steps = [
+        {
+            description: `<span id="d1-txt-0" class="anim-text"><strong>Passaggio 1:</strong> Per dividere le frazioni, trasformiamo le divisioni in <strong>moltiplicazioni</strong>.</span><br>` +
+                         `<span id="d1-txt-1" class="anim-text"><strong>Invertiamo</strong> le frazioni successive.</span> ` +
+                         `<span id="d1-txt-2" class="anim-text">Le frecce rosse <span style="color: var(--accent-red);"><strong>↳</strong></span> e <span style="color: var(--accent-red);"><strong>↗</strong></span> mostrano lo scambio.</span>`,
+            blocks: step1Blocks,
+            animation: animDiv1
+        }
+    ];
+    
+    steps.push({
+        description: `<span id="m1-txt-0" class="anim-text"><strong>Passaggio 2:</strong> Ora procediamo come una moltiplicazione. Moltiplichiamo i numeratori:</span><br>` +
+                     `<span id="m1-txt-1" class="anim-text">${numsStr} = <strong>${res_n}</strong>.</span>`,
+        blocks: mulSteps[0].blocks,
+        animation: mulSteps[0].animation
+    });
+    
+    steps.push({
+        description: `<span id="m2-txt-0" class="anim-text"><strong>Passaggio 3:</strong> Moltiplichiamo i denominatori delle frazioni trasformate:</span><br>` +
+                     `<span id="m2-txt-1" class="anim-text">${densStr} = <strong>${res_d}</strong>.</span>`,
+        blocks: mulSteps[1].blocks,
+        animation: mulSteps[1].animation
+    });
+    
+    let step4Blocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) step4Blocks.push({ type: 'op', val: '÷', dim: [] });
+        step4Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+    });
+    step4Blocks.push({ type: 'op', val: '=', dim: [] });
+    step4Blocks.push({ type: 'frac', n: res_n, d: res_d, hl: ['n', 'd', 'line'], dim: [] });
+    
+    let animDiv4 = [];
+    let d4_0 = JSON.parse(JSON.stringify(step4Blocks));
+    d4_0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            if (b.type === 'frac') b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animDiv4.push({ txtId: 'd4-txt-0', blocks: d4_0 });
+    
+    let d4_1 = JSON.parse(JSON.stringify(step4Blocks));
+    d4_1.forEach((b, idx) => {
+        if (idx === step4Blocks.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animDiv4.push({ 
+        txtId: 'd4-txt-1', 
+        blocks: d4_1,
+        connector: { from: 'block-0', to: `block-${step4Blocks.length - 1}`, text: '=' }
+    });
+    
+    steps.push({
+        description: `<span id="d4-txt-0" class="anim-text"><strong>Finito!</strong> L'operazione è completa.</span><br>` +
+                     `<span id="d4-txt-1" class="anim-text">Il risultato della divisione originale è <strong>${res_n}/${res_d}</strong>.</span>`,
+        blocks: step4Blocks,
+        animation: animDiv4
+    });
+    
+    return steps;
+}
+
+// --- MOTORE VISUALE ---
+
+// --- MOTORE VISUALE ---
+
+// --- RAPPRESENTAZIONE VISIVA A TORTE (DSA SUPPORT) ---
+let showPies = false;
+
+function parseNumericValue(val) {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+        const match = val.match(/-?\d+/);
+        if (match) return parseInt(match[0], 10);
+    }
+    return NaN;
+}
+
+function drawSinglePieSVG(shaded, total) {
+    const size = 180;
+    const center = size / 2;
+    const radius = size / 2 - 6; // Lascia un po' di spazio per il filtro ombra e il bordo
+    
+    let paths = [];
+    
+    if (total === 1) {
+        const fill = shaded >= 1 ? 'var(--primary-blue)' : '#E5E5E5';
+        paths.push(`<circle cx="${center}" cy="${center}" r="${radius}" fill="${fill}" stroke="#FFFFFF" stroke-width="4"/>`);
+    } else if (total > 100) {
+        // Disegna uno sfondo grigio unito per rappresentare il totale del denominatore
+        paths.push(`<circle cx="${center}" cy="${center}" r="${radius}" fill="#E5E5E5" stroke="#FFFFFF" stroke-width="4"/>`);
+        
+        if (shaded >= total) {
+            // Se è tutto colorato (numeratore >= denominatore), riempie completamente in blu
+            paths.push(`<circle cx="${center}" cy="${center}" r="${radius}" fill="var(--primary-blue)" stroke="#FFFFFF" stroke-width="4"/>`);
+        } else if (shaded > 0) {
+            // Disegna un'unica macro-fetta continua che rappresenta la frazione del totale (es. 78.94%)
+            const angleStart = -Math.PI / 2;
+            const angleEnd = angleStart + (shaded / total) * 2 * Math.PI;
+            
+            const x1 = center + radius * Math.cos(angleStart);
+            const y1 = center + radius * Math.sin(angleStart);
+            const x2 = center + radius * Math.cos(angleEnd);
+            const y2 = center + radius * Math.sin(angleEnd);
+            
+            const largeArcFlag = (shaded / total) > 0.5 ? 1 : 0;
+            
+            paths.push(`<path d="M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z" fill="var(--primary-blue)" stroke="#FFFFFF" stroke-width="3"/>`);
+        }
+    } else {
+        // Disegno standard con singole fette divisorie per denominatori <= 100
+        for (let k = 0; k < total; k++) {
+            const angleStart = (k * 2 * Math.PI) / total - Math.PI / 2;
+            const angleEnd = ((k + 1) * 2 * Math.PI) / total - Math.PI / 2;
+            
+            const x1 = center + radius * Math.cos(angleStart);
+            const y1 = center + radius * Math.sin(angleStart);
+            const x2 = center + radius * Math.cos(angleEnd);
+            const y2 = center + radius * Math.sin(angleEnd);
+            
+            const fill = k < shaded ? 'var(--primary-blue)' : '#E5E5E5';
+            
+            paths.push(`<path d="M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2} Z" fill="${fill}" stroke="#FFFFFF" stroke-width="2"/>`);
+        }
+    }
+    
+    return `
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="filter: drop-shadow(0px 3px 6px rgba(0,0,0,0.15)); margin: 0 4px;">
+            ${paths.join('')}
+        </svg>
+    `;
+}
+
+function getPieSVGHTML(num, den) {
+    if (isNaN(num) || isNaN(den) || den <= 0) return '';
+    
+    const absNum = Math.abs(num);
+    const absDen = Math.abs(den);
+    
+    const fullPiesCount = Math.floor(absNum / absDen);
+    const remainderShaded = absNum % absDen;
+    const needsRemainderPie = remainderShaded > 0 || fullPiesCount === 0;
+    
+    let html = '<div class="pies-row" style="display: flex; gap: 4px; justify-content: center;">';
+    
+    for (let i = 0; i < fullPiesCount; i++) {
+        html += drawSinglePieSVG(absDen, absDen);
+    }
+    
+    if (needsRemainderPie) {
+        html += drawSinglePieSVG(remainderShaded, absDen);
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+function updatePiesRendering(blocks) {
+    blocks.forEach((b, i) => {
+        if (b.type === 'frac') {
+            const fracEl = document.getElementById(`block-${i}`);
+            if (!fracEl) return;
+            
+            let pieContainer = document.getElementById(`block-${i}-pie`);
+            if (!pieContainer) {
+                pieContainer = document.createElement('div');
+                pieContainer.id = `block-${i}-pie`;
+                pieContainer.className = 'fraction-pie-container';
+                fracEl.appendChild(pieContainer);
+            }
+            
+            const parsedN = parseNumericValue(b.n);
+            const parsedD = parseNumericValue(b.d);
+            
+            if (showPies && !isNaN(parsedD) && parsedD > 0) {
+                if (!isNaN(parsedN)) {
+                    pieContainer.innerHTML = getPieSVGHTML(parsedN, parsedD);
+                } else {
+                    pieContainer.innerHTML = drawSinglePieSVG(0, parsedD);
+                }
+                pieContainer.style.display = 'block';
+                pieContainer.style.opacity = '1';
+            } else {
+                pieContainer.innerHTML = '';
+                pieContainer.style.display = 'none';
+                pieContainer.style.opacity = '0';
+            }
+        }
+    });
+}
+
+function renderBoardStructure(blocks) {
+    const board = document.getElementById('step-visual');
+    
+    blocks.forEach((b, i) => {
+        let blockEl = document.getElementById(`block-${i}`);
+        
+        // Verifica se l'elemento va ricreato (se cambia tipo da frazione a operatore o viceversa)
+        const needsRecreation = !blockEl || 
+            (b.type === 'frac' && !blockEl.classList.contains('fraction-display')) ||
+            (b.type === 'op' && !blockEl.classList.contains('op-display'));
+
+        if (needsRecreation) {
+            if (blockEl) {
+                blockEl.remove();
+            }
+            const temp = document.createElement('div');
+            if (b.type === 'frac') {
+                temp.innerHTML = `
+                    <div class="fraction-display" id="block-${i}">
+                        <div class="num fade-target" id="block-${i}-n"></div>
+                        <div class="line fade-target" id="block-${i}-line"></div>
+                        <div class="den fade-target" id="block-${i}-d"></div>
+                    </div>
+                `;
+            } else {
+                temp.innerHTML = `<div class="op-display fade-target" id="block-${i}"></div>`;
+            }
+            board.appendChild(temp.firstElementChild);
+            blockEl = document.getElementById(`block-${i}`);
+        }
+        
+        if (b.type === 'frac') {
+            document.getElementById(`block-${i}-n`).innerHTML = b.n;
+            document.getElementById(`block-${i}-d`).innerHTML = b.d;
+        } else {
+            blockEl.innerHTML = b.val;
+        }
+    });
+    
+    while(board.children.length > blocks.length) {
+        board.removeChild(board.lastChild);
+    }
+    
+    updatePiesRendering(blocks);
+}
+
+function applyStyles(blocks) {
+    blocks.forEach((b, i) => {
+        if (b.type === 'frac') {
+            const frac = document.getElementById(`block-${i}`);
+            const n = document.getElementById(`block-${i}-n`);
+            const d = document.getElementById(`block-${i}-d`);
+            const line = document.getElementById(`block-${i}-line`);
+            
+            frac.classList.remove('circled');
+            n.classList.remove('highlight-red', 'highlight-blue', 'dimmed', 'circled');
+            d.classList.remove('highlight-red', 'highlight-blue', 'dimmed', 'circled');
+            line.classList.remove('highlight-red', 'highlight-blue', 'dimmed');
+
+            if (b.hl && b.hl.includes('n')) n.classList.add('highlight-red');
+            if (b.hl && b.hl.includes('d')) d.classList.add('highlight-red');
+            if (b.hl && b.hl.includes('line')) line.classList.add('highlight-red');
+
+            if (b.hl_blue && b.hl_blue.includes('n')) n.classList.add('highlight-blue');
+            if (b.hl_blue && b.hl_blue.includes('d')) d.classList.add('highlight-blue');
+            if (b.hl_blue && b.hl_blue.includes('line')) line.classList.add('highlight-blue');
+
+            if (b.dim && b.dim.includes('n')) n.classList.add('dimmed');
+            if (b.dim && b.dim.includes('d')) d.classList.add('dimmed');
+            if (b.dim && b.dim.includes('line')) line.classList.add('dimmed');
+            
+            if (b.circle && b.circle.includes('frac')) frac.classList.add('circled');
+            if (b.circle && b.circle.includes('n')) n.classList.add('circled');
+            if (b.circle && b.circle.includes('d')) d.classList.add('circled');
+        } else {
+            const val = document.getElementById(`block-${i}`);
+            if (val) {
+                val.classList.remove('highlight-red', 'highlight-blue', 'dimmed');
+                if (b.hl && b.hl.includes('val')) val.classList.add('highlight-red');
+                if (b.hl_blue && b.hl_blue.includes('val')) val.classList.add('highlight-blue');
+                if (b.dim && b.dim.includes('val')) val.classList.add('dimmed');
+            }
+        }
+    });
+    
+    updatePiesRendering(blocks);
+}
+
+function stopAnimation() {
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
+    isAnimating = false;
+    renderedFrameIndex = -1;
+    const btnPlay = document.getElementById('btn-play-animation');
+    if (btnPlay) {
+        btnPlay.innerHTML = '▶ Avvia';
+        btnPlay.classList.remove('active');
+    }
+    
+    const step = currentSteps[currentStepIndex];
+    if (step) {
+        renderBoardStructure(step.blocks);
+        applyStyles(step.blocks);
+    }
+    document.querySelectorAll('.anim-text').forEach(el => el.classList.remove('active-text'));
+    clearVisualConnectors();
+}
+
+function startAnimation(step) {
+    if (!step.animation || step.animation.length === 0) return;
+    
+    isAnimating = true;
+    const btnPlay = document.getElementById('btn-play-animation');
+    if (btnPlay) {
+        btnPlay.innerHTML = '⏸ Pausa';
+        btnPlay.classList.add('active');
+    }
+    
+    currentAnimFrame = 0;
+    
+    function playFrame() {
+        const frame = step.animation[currentAnimFrame];
+        
+        renderBoardStructure(frame.blocks);
+        applyStyles(frame.blocks);
+        
+        document.querySelectorAll('.anim-text').forEach(el => el.classList.remove('active-text'));
+        const activeText = document.getElementById(frame.txtId);
+        if (activeText) {
+            activeText.classList.add('active-text');
+        }
+        
+        clearVisualConnectors();
+        if (frame.connector) {
+            if (Array.isArray(frame.connector)) {
+                frame.connector.forEach(conn => {
+                    drawVisualConnector(conn.from, conn.to, conn.text);
+                });
+            } else {
+                drawVisualConnector(frame.connector.from, frame.connector.to, frame.connector.text);
+            }
+        }
+        
+        renderedFrameIndex = currentAnimFrame;
+        currentAnimFrame = (currentAnimFrame + 1) % step.animation.length;
+    }
+    
+    playFrame();
+    animationInterval = setInterval(playFrame, 3500); // 3.5 secondi per frame, molto rilassato
+}
+
+function toggleAnimation() {
+    const step = currentSteps[currentStepIndex];
+    if (!step) return;
+    
+    if (isAnimating) {
+        stopAnimation();
+    } else {
+        startAnimation(step);
+    }
+}
+
+function showStep(index) {
+    stopAnimation();
+    
+    const step = currentSteps[index];
+    renderBoardStructure(step.blocks);
+    
+    const descEl = document.getElementById('step-description');
+    descEl.style.opacity = 0;
+    
+    setTimeout(() => {
+        descEl.innerHTML = step.description;
+        descEl.style.opacity = 1;
+        
+        // Verifica se siamo sull'ultimo passaggio (risultato) e se è semplificabile
+        const isLastOriginalStep = (index === currentSteps.length - 1) && !step.isSimplification;
+        if (isLastOriginalStep) {
+            const finalBlock = step.blocks[step.blocks.length - 1];
+            if (finalBlock && finalBlock.type === 'frac') {
+                const n = parseInt(finalBlock.n);
+                const d = parseInt(finalBlock.d);
+                if (!isNaN(n) && !isNaN(d) && d > 0) {
+                    const g = gcd(n, d);
+                    if (g > 1) {
+                        descEl.innerHTML += 
+                            `<br><button id="btn-simplify-res" class="control-btn-accent" style="margin-top: 15px; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 20px; font-size: 1rem; border: none; cursor: pointer; background: var(--accent-red); color: white; box-shadow: 0 4px 10px rgba(231, 76, 60, 0.3); transition: transform 0.2s ease, opacity 0.2s ease;">✨ Semplifica Risultato (MCD: ${g})</button>`;
+                        
+                        setTimeout(() => {
+                            const btnSimp = document.getElementById('btn-simplify-res');
+                            if (btnSimp) {
+                                btnSimp.addEventListener('click', () => {
+                                    simplifyFinalFraction(n, d, g);
+                                });
+                            }
+                        }, 50);
+                    }
+                }
+            }
+        }
+    }, 400);
+
+    setTimeout(() => {
+        applyStyles(step.blocks);
+    }, 50);
+
+    const btnPrev = document.getElementById('btn-prev-step');
+    const btnNext = document.getElementById('btn-next-step');
+    const btnPlay = document.getElementById('btn-play-animation');
+    const btnPrevFrame = document.getElementById('btn-prev-frame');
+    const btnNextFrame = document.getElementById('btn-next-frame');
+    
+    // Gestione abilitazione passaggi principali
+    btnPrev.disabled = (index === 0);
+    btnNext.disabled = (index === currentSteps.length - 1);
+    
+    // Gestione abilitazione animazione
+    const hasAnim = !!(step.animation && step.animation.length > 0);
+    btnPlay.disabled = !hasAnim;
+    btnPrevFrame.disabled = !hasAnim;
+    btnNextFrame.disabled = !hasAnim;
+    
+    if (!hasAnim) {
+        btnPlay.innerHTML = '▶ Avvia';
+        btnPlay.classList.remove('active');
+    }
+}
+
+function simplifyFinalFraction(n, d, g) {
+    const simpN = n / g;
+    const simpD = d / g;
+    
+    let stepSimpBlocks = [];
+    stepSimpBlocks.push({ type: 'frac', n: n, d: d, hl: ['n', 'd'], dim: [] });
+    stepSimpBlocks.push({ type: 'op', val: '=', dim: [] });
+    stepSimpBlocks.push({ type: 'frac', n: simpN, d: simpD, hl: ['n', 'd'], dim: [] });
+    
+    let animSimp = [];
+    // Frame 0: frazione originale cerchiata
+    let s0 = JSON.parse(JSON.stringify(stepSimpBlocks));
+    s0[2].hl = []; s0[2].dim = ['n', 'd', 'line'];
+    s0[0].circle = ['frac'];
+    animSimp.push({ txtId: 'simp-txt-0', blocks: s0 });
+    
+    // Frame 1: frazione semplificata cerchiata + frecce con divisione MCD per numeratore e denominatore
+    let s1 = JSON.parse(JSON.stringify(stepSimpBlocks));
+    s1[2].circle = ['frac'];
+    animSimp.push({ 
+        txtId: 'simp-txt-1', 
+        blocks: s1, 
+        connector: [
+            { from: 'block-0-n', to: 'block-2-n', text: `÷ ${g}` },
+            { from: 'block-0-d', to: 'block-2-d', text: `÷ ${g}` }
+        ]
+    });
+    
+    const simpStep = {
+        isSimplification: true,
+        description: `<span id="simp-txt-0" class="anim-text"><strong>Semplificazione:</strong> Dividiamo per il Massimo Comun Divisore (MCD) di ${n} e ${d}, che è <strong>${g}</strong>.</span><br>` +
+                     `<span id="simp-txt-1" class="anim-text">Dividiamo sia il numeratore che il denominatore per ${g} per ottenere la frazione ridotta ai minimi termini: <strong>${simpN}/${simpD}</strong>.</span>`,
+        blocks: stepSimpBlocks,
+        animation: animSimp
+    };
+    
+    // Rimuove eventuali semplificazioni precedenti per evitare duplicati
+    if (currentSteps[currentSteps.length - 1].isSimplification) {
+        currentSteps.pop();
+    }
+    
+    currentSteps.push(simpStep);
+    currentStepIndex = currentSteps.length - 1;
+    showStep(currentStepIndex);
+}
+
+// --- BOTTONI E UI EVENTI ---
+
+document.querySelectorAll('.op-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('selected'));
+        e.target.classList.add('selected');
+        selectedOp = e.target.getAttribute('data-op');
+        
+        let opSymbol = '+';
+        if (selectedOp === '*') opSymbol = '×';
+        else if (selectedOp === '/') opSymbol = '÷';
+        else if (selectedOp) opSymbol = selectedOp;
+        
+        document.querySelectorAll('.op-label').forEach(label => {
+            label.textContent = opSymbol;
+        });
+    });
+});
+
+document.getElementById('btn-add-fraction').addEventListener('click', () => {
+    if (fractionCount < 4) {
+        const vals = getAndSaveValues();
+        fractionCount++;
+        renderInputs();
+        restoreValues(vals);
+    }
+});
+
+document.getElementById('btn-remove-fraction').addEventListener('click', () => {
+    if (fractionCount > 2) {
+        const vals = getAndSaveValues();
+        fractionCount--;
+        renderInputs();
+        restoreValues(vals);
+    }
+});
+
+document.getElementById('btn-analyze').addEventListener('click', () => {
+    let fractions = [];
+    for (let i = 1; i <= fractionCount; i++) {
+        const numVal = parseInt(document.getElementById(`num${i}`).value, 10);
+        const denVal = parseInt(document.getElementById(`den${i}`).value, 10);
+        
+        if (isNaN(numVal) || isNaN(denVal)) {
+            alert("Per favore, inserisci tutti i numeri.");
+            return;
+        }
+        if (denVal === 0) {
+            alert("Un denominatore non può essere zero.");
+            return;
+        }
+        fractions.push({ num: numVal, den: denVal });
+    }
+
+    if (!selectedOp) {
+        alert("Scegli un'operazione prima di continuare (+, -, ×, ÷).");
+        return;
+    }
+
+    let analysisHtml = '';
+    fractions.forEach((f, idx) => {
+        let label = '';
+        if (idx === 0) label = 'prima frazione';
+        else if (idx === 1) label = 'seconda frazione';
+        else if (idx === 2) label = 'terza frazione';
+        else if (idx === 3) label = 'quarta frazione';
+        
+        analysisHtml += `<div class="analysis-item">${getFractionDescription(f.num, f.den, label)}</div>`;
+    });
+    document.getElementById('analysis-content').innerHTML = analysisHtml;
+
+    if (selectedOp === '+' || selectedOp === '-') {
+        currentSteps = buildStepsAddSub(fractions, selectedOp);
+    } else if (selectedOp === '*') {
+        currentSteps = buildStepsMul(fractions);
+    } else if (selectedOp === '/') {
+        currentSteps = buildStepsDiv(fractions);
+    }
+
+    document.getElementById('phase1').classList.remove('active');
+    setTimeout(() => {
+        document.getElementById('phase2').classList.add('active');
+    }, 600);
+});
+
+document.getElementById('btn-start-calc').addEventListener('click', () => {
+    document.getElementById('phase2').classList.remove('active');
+    setTimeout(() => {
+        document.getElementById('phase3').classList.add('active');
+        currentStepIndex = 0;
+        document.getElementById('step-visual').innerHTML = '';
+        showStep(currentStepIndex);
+    }, 600);
+});
+
+document.getElementById('btn-prev-step').addEventListener('click', () => {
+    if (currentStepIndex > 0) {
+        currentStepIndex--;
+        showStep(currentStepIndex);
+    }
+});
+
+document.getElementById('btn-next-step').addEventListener('click', () => {
+    if (currentStepIndex < currentSteps.length - 1) {
+        currentStepIndex++;
+        showStep(currentStepIndex);
+    }
+});
+
+function stepAnimationFrame(dir) {
+    const step = currentSteps[currentStepIndex];
+    if (!step.animation || step.animation.length === 0) return;
+    
+    // Pausa riproduzione automatica
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
+    isAnimating = false;
+    const btnPlay = document.getElementById('btn-play-animation');
+    if (btnPlay) {
+        btnPlay.innerHTML = '▶ Avvia';
+        btnPlay.classList.remove('active');
+    }
+    
+    if (renderedFrameIndex === -1) {
+        renderedFrameIndex = 0;
+    }
+    
+    if (dir === 'next') {
+        renderedFrameIndex = (renderedFrameIndex + 1) % step.animation.length;
+    } else {
+        renderedFrameIndex = (renderedFrameIndex - 1 + step.animation.length) % step.animation.length;
+    }
+    
+    currentAnimFrame = (renderedFrameIndex + 1) % step.animation.length;
+    
+    const frame = step.animation[renderedFrameIndex];
+    renderBoardStructure(frame.blocks);
+    applyStyles(frame.blocks);
+    
+    document.querySelectorAll('.anim-text').forEach(el => el.classList.remove('active-text'));
+    const activeText = document.getElementById(frame.txtId);
+    if (activeText) {
+        activeText.classList.add('active-text');
+    }
+    
+    clearVisualConnectors();
+    if (frame.connector) {
+        if (Array.isArray(frame.connector)) {
+            frame.connector.forEach(conn => {
+                drawVisualConnector(conn.from, conn.to, conn.text);
+            });
+        } else {
+            drawVisualConnector(frame.connector.from, frame.connector.to, frame.connector.text);
+        }
+    }
+}
+
+document.getElementById('btn-prev-frame').addEventListener('click', () => {
+    stepAnimationFrame('prev');
+});
+
+document.getElementById('btn-next-frame').addEventListener('click', () => {
+    stepAnimationFrame('next');
+});
+
+document.getElementById('btn-play-animation').addEventListener('click', () => {
+    toggleAnimation();
+});
+
+document.getElementById('btn-toggle-pies').addEventListener('click', (e) => {
+    showPies = !showPies;
+    if (showPies) {
+        e.target.textContent = '📊 Nascondi Torte';
+        e.target.classList.add('active');
+    } else {
+        e.target.textContent = '📊 Mostra Torte';
+        e.target.classList.remove('active');
+    }
+    
+    const step = currentSteps[currentStepIndex];
+    if (step) {
+        if (isAnimating && renderedFrameIndex !== -1) {
+            const frame = step.animation[renderedFrameIndex];
+            updatePiesRendering(frame.blocks);
+        } else {
+            updatePiesRendering(step.blocks);
+        }
+    }
+});
+
+document.getElementById('btn-new-calc').addEventListener('click', () => {
+    document.getElementById('phase3').classList.remove('active');
+    setTimeout(() => {
+        document.getElementById('phase1').classList.add('active');
+        fractionCount = 2;
+        selectedOp = null;
+        document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('selected'));
+        // Quando resettiamo il calcolo, azzeriamo anche lo stato delle torte
+        showPies = false;
+        const btnTogglePies = document.getElementById('btn-toggle-pies');
+        if (btnTogglePies) {
+            btnTogglePies.textContent = '📊 Mostra Torte';
+            btnTogglePies.classList.remove('active');
+        }
+        renderInputs();
+    }, 600);
+});
+
+// Inizializza gli input al caricamento della pagina
+renderInputs();
