@@ -1547,3 +1547,42 @@ document.getElementById('btn-new-calc').addEventListener('click', () => {
 
 // Inizializza gli input al caricamento della pagina
 renderInputs();
+
+// --- GESTIONE MODAL PER IMMAGINI INFORMATIVE ---
+const modal = document.getElementById('image-modal');
+const modalImg = document.getElementById('modal-img');
+const modalClose = document.getElementById('modal-close');
+const modalOverlay = modal.querySelector('.modal-overlay');
+
+function openImageModal(imgSrc, altText) {
+    modalImg.src = imgSrc;
+    modalImg.alt = altText;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden'; // Impedisce lo scroll dello sfondo
+}
+
+function closeImageModal() {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    modalImg.src = '';
+    document.body.style.overflow = ''; // Ripristina lo scroll
+}
+
+document.getElementById('btn-show-mcd-mcm').addEventListener('click', () => {
+    openImageModal('MCD-mcm.jpeg', 'Schema MCD e mcm');
+});
+
+document.getElementById('btn-show-frazioni').addEventListener('click', () => {
+    openImageModal('imm-frazione.jpeg', 'Schema Frazioni');
+});
+
+modalClose.addEventListener('click', closeImageModal);
+modalOverlay.addEventListener('click', closeImageModal);
+
+// Chiudi con il tasto ESC per accessibilità
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+        closeImageModal();
+    }
+});

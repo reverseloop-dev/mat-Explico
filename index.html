@@ -17,7 +17,13 @@
         <main>
             <!-- Fase 1: Input e Operatore -->
             <section id="phase1" class="phase active">
-                <h2>1. Scegli l'operazione e il numero di frazioni</h2>
+                <div class="title-container">
+                    <h2>1. Scegli l'operazione e il numero di frazioni</h2>
+                    <div class="title-buttons">
+                        <button id="btn-show-mcd-mcm" class="info-img-btn" type="button">Schema MCD-mcm</button>
+                        <button id="btn-show-frazioni" class="info-img-btn" type="button">Schema Frazioni</button>
+                    </div>
+                </div>
                 
                 <div class="setup-controls">
                     <div class="operator-selection" aria-label="Selezione operazione">
@@ -79,6 +85,18 @@
             </section>
         </main>
     </div>
+
+    <!-- Modal per visualizzazione immagini grande al centro -->
+    <div id="image-modal" class="modal hidden" aria-hidden="true" role="dialog">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button id="modal-close" class="modal-close-btn" aria-label="Chiudi">&times;</button>
+            <div class="modal-body">
+                <img id="modal-img" src="" alt="Schema visivo">
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
