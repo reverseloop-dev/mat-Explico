@@ -1,0 +1,490 @@
+/* Variabili Globali per Accessibilità DSA */
+:root {
+    --bg-color: #FFFDD0; /* Crema: riduce abbagliamento e stress visivo */
+    --text-color: #222222; /* Nero morbido: alto contrasto senza affaticare */
+    --accent-red: #D32F2F; /* Rosso per l'evidenziazione, chiaro ma non acceso */
+    --primary-blue: #1976D2; /* Blu per pulsanti principali */
+    --btn-bg: #FFFFFF;
+    --btn-border: #BBBBBB;
+    --transition-speed: 0.6s; /* Transizione fluida raccomandata: 0.6s */
+    --dimmed-opacity: 0.25; /* Opacità per elementi non a fuoco */
+}
+
+/* Reset base e Font Settings */
+body {
+    font-family: 'Andika', 'Comic Sans MS', sans-serif;
+    font-size: 22px; /* Dimensione base generosa per leggibilità */
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+.container {
+    width: 95%;
+    max-width: 1400px;
+    padding: 2rem;
+    box-sizing: border-box;
+}
+
+header h1 {
+    font-size: 2.8rem;
+    text-align: center;
+    margin-bottom: 2rem;
+    color: var(--primary-blue);
+}
+
+h2 {
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 3px solid var(--btn-border);
+    padding-bottom: 0.5rem;
+}
+
+/* Gestione delle Fasi (Schermate) */
+.phase {
+    display: none;
+    opacity: 0;
+    transition: opacity var(--transition-speed) ease-in-out;
+}
+
+.phase.active {
+    display: block;
+    opacity: 1;
+}
+
+/* ----- FASE 1: Input ----- */
+.setup-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 2rem;
+}
+
+.fraction-count-controls {
+    display: flex;
+    gap: 15px;
+}
+
+.qty-btn {
+    font-family: 'Andika', sans-serif;
+    font-size: 1.2rem;
+    padding: 0.8rem 1.8rem;
+    border-radius: 12px;
+    cursor: pointer;
+    border: 3px solid var(--primary-blue);
+    background-color: #FFFFFF;
+    color: var(--primary-blue);
+    transition: all 0.2s ease;
+    font-weight: bold;
+}
+
+.qty-btn:hover:not(:disabled) {
+    background-color: var(--primary-blue);
+    color: #FFFFFF;
+}
+
+.qty-btn.secondary {
+    border-color: #777777;
+    color: #555555;
+}
+
+.qty-btn.secondary:hover:not(:disabled) {
+    background-color: #777777;
+    color: #FFFFFF;
+}
+
+.qty-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: var(--btn-border);
+    color: var(--btn-border);
+}
+
+.fractions-input-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    background: #FFFFFF;
+    padding: 3rem 1.5rem;
+    border-radius: 16px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    margin-bottom: 2rem;
+    flex-wrap: wrap; /* per tablet/mobile */
+}
+
+.fraction-input {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.fraction-input input {
+    font-family: 'Andika', sans-serif;
+    font-size: 2.5rem;
+    width: 110px;
+    text-align: center;
+    padding: 10px;
+    border: 3px solid var(--btn-border);
+    border-radius: 12px;
+    color: var(--text-color);
+}
+
+.fraction-input input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 4px rgba(25, 118, 210, 0.2);
+}
+
+.fraction-line {
+    width: 130px;
+    height: 6px;
+    background-color: var(--text-color);
+    border-radius: 3px;
+}
+
+.op-label {
+    font-size: 3rem;
+    font-weight: bold;
+    color: var(--primary-blue);
+    padding: 0 10px;
+}
+
+.operator-selection {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.op-btn {
+    font-family: 'Andika', sans-serif;
+    font-size: 3rem;
+    width: 80px;
+    height: 80px;
+    border: 3px solid var(--primary-blue);
+    background-color: var(--btn-bg);
+    color: var(--primary-blue);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.op-btn:hover, .op-btn.selected {
+    background-color: var(--primary-blue);
+    color: white;
+}
+
+.action-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.action-btn {
+    font-family: 'Andika', sans-serif;
+    font-size: 1.6rem;
+    padding: 1.2rem 3rem;
+    background-color: var(--primary-blue);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.2s;
+    box-shadow: 0 4px 6px rgba(25, 118, 210, 0.3);
+}
+
+.action-btn:hover {
+    transform: translateY(-2px);
+}
+
+/* ----- FASE 2: Analisi ----- */
+.analysis-box {
+    background: #FFFFFF;
+    padding: 2.5rem;
+    border-radius: 16px;
+    margin-bottom: 2rem;
+    font-size: 1.4rem;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    line-height: 1.8;
+}
+
+.analysis-item {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background-color: var(--bg-color);
+    border-radius: 12px;
+    border-left: 8px solid var(--primary-blue);
+}
+
+.analysis-item:last-child {
+    margin-bottom: 0;
+}
+
+/* ----- FASE 3: Risoluzione Guidata ----- */
+.calculation-board {
+    background: #FFFFFF;
+    padding: 3rem 1.5rem;
+    border-radius: 16px;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+    overflow-x: auto; /* Per emergenza su schermi molto piccoli */
+}
+
+.explanation-box {
+    background: #E3F2FD; /* Blu molto chiaro */
+    padding: 2rem;
+    border-radius: 16px;
+    border-left: 8px solid var(--primary-blue);
+    margin-bottom: 2.5rem;
+    font-size: 1.5rem;
+    min-height: 100px;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.control-btn {
+    font-family: 'Andika', sans-serif;
+    font-size: 1.3rem;
+    padding: 1rem 1.6rem;
+    border-radius: 12px;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: all 0.2s ease;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.control-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.control-btn.primary {
+    background-color: var(--primary-blue);
+    color: white;
+    box-shadow: 0 4px 6px rgba(25, 118, 210, 0.3);
+}
+
+.control-btn.secondary {
+    background-color: #FFFFFF;
+    color: var(--primary-blue);
+    border-color: var(--primary-blue);
+}
+
+.control-btn:hover {
+    transform: translateY(-2px);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ----- Utilità Visive e Animazioni (CORE PER DSA) ----- */
+
+.fade-target {
+    transition: opacity var(--transition-speed) ease-in-out, 
+                color var(--transition-speed) ease-in-out,
+                background-color var(--transition-speed) ease-in-out;
+}
+
+.fade-target-desc {
+    transition: opacity 0.4s ease-in-out;
+}
+
+.dimmed {
+    opacity: var(--dimmed-opacity);
+}
+
+.highlight-red {
+    color: var(--accent-red);
+    font-weight: bold;
+}
+
+/* Se l'elemento linea è highlight-red, cambia il background invece del color */
+div.line.highlight-red {
+    background-color: var(--accent-red) !important;
+}
+
+.highlight-blue {
+    color: var(--primary-blue);
+    font-weight: bold;
+}
+
+/* Se l'elemento linea è highlight-blue, cambia il background invece del color */
+div.line.highlight-blue {
+    background-color: var(--primary-blue) !important;
+}
+
+.arrow-red {
+    color: var(--accent-red);
+    font-weight: bold;
+    display: inline-block;
+    margin: 0 4px;
+    font-size: 0.85em;
+}
+
+/* Cerchiatura per l'animazione guidata */
+.fraction-display.circled {
+    border: 3px dashed var(--accent-red);
+    border-radius: 12px;
+    padding: 8px;
+    background-color: rgba(211, 47, 47, 0.05);
+    box-shadow: 0 0 10px rgba(211, 47, 47, 0.3);
+    transform: scale(1.05);
+    transition: all 0.3s ease-in-out;
+}
+
+.num.circled, .den.circled {
+    border: 3px solid var(--accent-red);
+    border-radius: 50%;
+    min-width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 8px rgba(211, 47, 47, 0.5);
+    background-color: rgba(211, 47, 47, 0.1);
+    transition: all 0.3s ease-in-out;
+}
+
+.anim-text {
+    transition: background-color 0.4s ease, padding 0.2s ease, border-radius 0.2s ease;
+    padding: 2px 6px;
+    display: inline-block;
+    border-left: 3px solid transparent;
+}
+
+.anim-text.active-text {
+    background-color: rgba(25, 118, 210, 0.15); /* Sfondo blu chiaro trasparente */
+    border-radius: 4px;
+    font-weight: bold;
+    border-left: 3px solid var(--primary-blue);
+}
+
+/* Formattazione visiva frazioni nel tabellone */
+.visual-board {
+    display: inline-flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: nowrap;
+    padding-top: 60px; /* Spazio per le frecce superiori */
+    padding-bottom: 90px; /* Spazio per le torte a spicchi più piccole */
+    position: relative;
+    text-align: left;
+    margin: auto; /* Centra l'elemento nel flex container ed evita tagli in overflow */
+}
+
+.fraction-display {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    position: relative; /* Necessario per il posizionamento delle torte */
+}
+
+.fraction-pie-container {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    z-index: 5;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    width: 100%;
+    min-width: 80px;
+    display: flex;
+    justify-content: center;
+}
+
+.fraction-display .num, .fraction-display .den {
+    padding: 5px 15px;
+}
+
+.fraction-display .line {
+    width: 100%;
+    height: 6px;
+    background-color: var(--text-color);
+    border-radius: 3px;
+}
+
+.op-display {
+    padding: 0 10px;
+    font-weight: bold;
+}
+
+/* Selettore operatore individuale per frazioni aggiuntive */
+.op-selector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 5px;
+}
+
+.op-arr-btn {
+    background: #FFFFFF;
+    border: 2px solid var(--primary-blue);
+    color: var(--primary-blue);
+    border-radius: 6px;
+    cursor: pointer;
+    width: 28px;
+    height: 22px;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    padding: 0;
+    line-height: 1;
+}
+
+.op-arr-btn:hover {
+    background: var(--primary-blue);
+    color: white;
+}
+
+.op-selector-val {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: var(--primary-blue);
+    min-width: 28px;
+    text-align: center;
+    user-select: none;
+}

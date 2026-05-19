@@ -1,6 +1,7 @@
 let currentSteps = [];
 let currentStepIndex = 0;
 let selectedOp = null;
+let selectedOps = []; // Nuova gestione operatori singoli
 let fractionCount = 2;
 
 // --- SYSTEMA ANIMAZIONE ---
@@ -61,17 +62,33 @@ function renderInputs() {
     const container = document.getElementById('fractions-row');
     container.innerHTML = '';
     
-    let opSymbol = '+';
-    if (selectedOp === '*') opSymbol = '×';
-    else if (selectedOp === '/') opSymbol = '÷';
-    else if (selectedOp) opSymbol = selectedOp;
+    // Inizializza selectedOps se la lunghezza non corrisponde a fractionCount - 1
+    if (selectedOps.length !== fractionCount - 1) {
+        const defaultOp = selectedOp || '+';
+        let newOps = [];
+        for (let i = 0; i < fractionCount - 1; i++) {
+            newOps.push(selectedOps[i] || defaultOp);
+        }
+        selectedOps = newOps;
+    }
     
     for (let i = 1; i <= fractionCount; i++) {
         if (i > 1) {
-            const opLabel = document.createElement('div');
-            opLabel.className = 'op-label';
-            opLabel.textContent = opSymbol;
-            container.appendChild(opLabel);
+            const opIndex = i - 2;
+            const op = selectedOps[opIndex];
+            let opSymbol = '+';
+            if (op === '*') opSymbol = '×';
+            else if (op === '/') opSymbol = '÷';
+            else opSymbol = op;
+            
+            const opSelector = document.createElement('div');
+            opSelector.className = 'op-selector';
+            opSelector.innerHTML = `
+                <button class="op-arr-btn up" data-index="${opIndex}" aria-label="Operatore precedente">▲</button>
+                <span class="op-selector-val" id="op-val-${opIndex}">${opSymbol}</span>
+                <button class="op-arr-btn down" data-index="${opIndex}" aria-label="Operatore successivo">▼</button>
+            `;
+            container.appendChild(opSelector);
         }
         
         const fracDiv = document.createElement('div');
@@ -98,7 +115,7 @@ function clearVisualConnectors() {
 }
 
 function drawVisualConnector(fromId, toId, opText) {
-    const parent = document.getElementById('step-visual-container');
+    const parent = document.getElementById('step-visual');
     if (!parent) return;
     
     let svg = document.getElementById('connector-svg');
@@ -114,15 +131,17 @@ function drawVisualConnector(fromId, toId, opText) {
         svg.style.zIndex = '10';
         parent.appendChild(svg);
     }
-    svg.innerHTML = ''; // Pulisci
     
-    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    defs.innerHTML = `
-        <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="var(--accent-red)"/>
-        </marker>
-    `;
-    svg.appendChild(defs);
+    let defs = svg.querySelector('defs');
+    if (!defs) {
+        defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        defs.innerHTML = `
+            <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="var(--accent-red)"/>
+            </marker>
+        `;
+        svg.appendChild(defs);
+    }
     
     const fromEl = document.getElementById(fromId);
     const toEl = document.getElementById(toId);
@@ -164,9 +183,10 @@ function drawVisualConnector(fromId, toId, opText) {
         const Rx2 = (toRect.width || 44) / 2;
         const Ry2 = (toRect.height || 44) / 2;
         
-        // Calcola una stima del punto di controllo superiore
+        // Calcola una stima del punto di controllo
+        const isDownwardsCurve = fromId.endsWith('-d') || toId.endsWith('-d');
         const midX = (x1_ctr + x2_ctr) / 2;
-        const tempCy = Math.min(y1_ctr, y2_ctr) - 40;
+        const tempCy = isDownwardsCurve ? (Math.max(y1_ctr, y2_ctr) + 40) : (Math.min(y1_ctr, y2_ctr) - 40);
         
         // Angolo dal centro dell'elemento 1 verso il punto di controllo
         const angle1 = Math.atan2(tempCy - y1_ctr, midX - x1_ctr);
@@ -183,7 +203,7 @@ function drawVisualConnector(fromId, toId, opText) {
         const dx = x2 - x1;
         const dy = y2 - y1;
         cx = x1 + dx / 2;
-        cy = Math.min(y1, y2) - 40;
+        cy = tempCy;
     }
     
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -240,29 +260,35 @@ window.addEventListener('resize', () => {
 
 // --- GESTIONE DEI PASSAGGI DI RISOLUZIONE ---
 
-function buildStepsAddSub(fractions, op) {
+function buildStepsAddSub(fractions, ops) {
     let dens = fractions.map(f => f.den);
     let mcm = dens.reduce((acc, d) => lcm(acc, d), dens[0]);
     let newNums = fractions.map(f => (mcm / f.den) * f.num);
     
     let res_n = newNums[0];
     for (let i = 1; i < newNums.length; i++) {
+        const op = ops[i - 1];
         if (op === '+') res_n += newNums[i];
         else res_n -= newNums[i];
     }
     
-    let opWord = op === '+' ? 'sommare' : 'sottrarre';
     let steps = [];
     
     // --- Passaggio 1: Trova MCM ---
     let step1Blocks = [];
     fractions.forEach((f, idx) => {
-        if (idx > 0) step1Blocks.push({ type: 'op', val: op, dim: ['val'] });
+        if (idx > 0) {
+            const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+            step1Blocks.push({ type: 'op', val: currentOp, dim: ['val'] });
+        }
         step1Blocks.push({ type: 'frac', n: f.num, d: f.den, hl: ['d'], dim: ['n', 'line'] });
     });
     step1Blocks.push({ type: 'op', val: '=', dim: ['val'] });
     fractions.forEach((f, idx) => {
-        if (idx > 0) step1Blocks.push({ type: 'op', val: op, dim: ['val'] });
+        if (idx > 0) {
+            const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+            step1Blocks.push({ type: 'op', val: currentOp, dim: ['val'] });
+        }
         step1Blocks.push({ type: 'frac', n: '?', d: mcm, hl: ['d'], dim: ['n', 'line'] });
     });
     
@@ -318,7 +344,10 @@ function buildStepsAddSub(fractions, op) {
         let stepBlocks = [];
         // Sinistra
         fractions.forEach((f, idx) => {
-            if (idx > 0) stepBlocks.push({ type: 'op', val: op, dim: ['val'] });
+            if (idx > 0) {
+                const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+                stepBlocks.push({ type: 'op', val: currentOp, dim: ['val'] });
+            }
             if (idx === i) {
                 stepBlocks.push({ type: 'frac', n: f.num, d: f.den, hl: ['n', 'd'], dim: ['line'] });
             } else {
@@ -328,7 +357,10 @@ function buildStepsAddSub(fractions, op) {
         stepBlocks.push({ type: 'op', val: '=', dim: ['val'] });
         // Destra
         fractions.forEach((f, idx) => {
-            if (idx > 0) stepBlocks.push({ type: 'op', val: op, dim: ['val'] });
+            if (idx > 0) {
+                const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+                stepBlocks.push({ type: 'op', val: currentOp, dim: ['val'] });
+            }
             if (idx === i) {
                 stepBlocks.push({ type: 'frac', n: newNums[idx], d: mcm, hl: ['n', 'd'], dim: ['line'] });
             } else {
@@ -425,18 +457,28 @@ function buildStepsAddSub(fractions, op) {
     // --- Passaggio N+2: Somma dei numeratori ---
     let stepCombineBlocks = [];
     fractions.forEach((f, idx) => {
-        if (idx > 0) stepCombineBlocks.push({ type: 'op', val: op, dim: ['val'] });
+        if (idx > 0) {
+            const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+            stepCombineBlocks.push({ type: 'op', val: currentOp, dim: ['val'] });
+        }
         stepCombineBlocks.push({ type: 'frac', n: f.num, d: f.den, dim: ['n', 'd', 'line'] });
     });
     stepCombineBlocks.push({ type: 'op', val: '=', dim: ['val'] });
     newNums.forEach((n, idx) => {
-        if (idx > 0) stepCombineBlocks.push({ type: 'op', val: op, hl: ['val'] });
+        if (idx > 0) {
+            const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+            stepCombineBlocks.push({ type: 'op', val: currentOp, hl: ['val'] });
+        }
         stepCombineBlocks.push({ type: 'frac', n: n, d: mcm, hl: ['n'], dim: ['d', 'line'] });
     });
     stepCombineBlocks.push({ type: 'op', val: '=', dim: ['val'] });
     stepCombineBlocks.push({ type: 'frac', n: res_n, d: mcm, hl: ['n'], dim: ['d', 'line'] });
     
-    let calcStr = newNums.join(` ${op} `);
+    let calcStr = newNums[0].toString();
+    for (let i = 1; i < newNums.length; i++) {
+        const currentOp = ops[i - 1] === '*' ? '×' : (ops[i - 1] === '/' ? '÷' : ops[i - 1]);
+        calcStr += ` ${currentOp} ${newNums[i]}`;
+    }
     
     let animCombineFrames = [];
     // Frame 0: Focus frazioni convertite cerchiando i numeratori
@@ -486,7 +528,7 @@ function buildStepsAddSub(fractions, op) {
     });
     
     steps.push({
-        description: `<span id="ac-txt-0" class="anim-text"><strong>Passaggio ${fractions.length + 2}:</strong> Ora che tutte le frazioni hanno lo stesso denominatore, possiamo ${opWord} i numeratori...</span><br>` +
+        description: `<span id="ac-txt-0" class="anim-text"><strong>Passaggio ${fractions.length + 2}:</strong> Ora che tutte le frazioni hanno lo stesso denominatore, possiamo combinare i numeratori...</span><br>` +
                      `<span id="ac-txt-1" class="anim-text">calcolando: ${calcStr}</span> ` +
                      `<span id="ac-txt-2" class="anim-text">= <strong>${res_n}</strong> mantenendo lo stesso denominatore.</span>`,
         blocks: stepCombineBlocks,
@@ -496,7 +538,10 @@ function buildStepsAddSub(fractions, op) {
     // --- Passaggio N+3: Risultato finale ---
     let stepFinalBlocks = [];
     fractions.forEach((f, idx) => {
-        if (idx > 0) stepFinalBlocks.push({ type: 'op', val: op, dim: [] });
+        if (idx > 0) {
+            const currentOp = ops[idx - 1] === '*' ? '×' : (ops[idx - 1] === '/' ? '÷' : ops[idx - 1]);
+            stepFinalBlocks.push({ type: 'op', val: currentOp, dim: [] });
+        }
         stepFinalBlocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
     });
     stepFinalBlocks.push({ type: 'op', val: '=', dim: [] });
@@ -539,14 +584,187 @@ function buildStepsAddSub(fractions, op) {
     return steps;
 }
 
-function buildStepsMul(fractions) {
+function buildStepsMultiplicative(fractions, ops) {
+    let transformed = fractions.map((f, idx) => {
+        if (idx === 0) return { num: f.num, den: f.den };
+        const prevOp = ops[idx - 1];
+        if (prevOp === '/') {
+            return { num: f.den, den: f.num };
+        } else {
+            return { num: f.num, den: f.den };
+        }
+    });
+    
+    let res_n = transformed.reduce((acc, f) => acc * f.num, 1);
+    let res_d = transformed.reduce((acc, f) => acc * f.den, 1);
+    
+    let numsStr = transformed.map(f => f.num).join(' × ');
+    let densStr = transformed.map(f => f.den).join(' × ');
+    
+    let steps = [];
+    
+    const hasDiv = ops.includes('/');
+    if (hasDiv) {
+        let step1Blocks = [];
+        fractions.forEach((f, idx) => {
+            if (idx > 0) {
+                const currentOp = ops[idx - 1] === '/' ? '÷' : '×';
+                step1Blocks.push({ type: 'op', val: currentOp, hl: ['val'] });
+            }
+            if (idx > 0 && ops[idx - 1] === '/') {
+                step1Blocks.push({ 
+                    type: 'frac', 
+                    n: f.num + ' <span class="arrow-red">↳</span>', 
+                    d: f.den + ' <span class="arrow-red">↗</span>', 
+                    hl: ['n', 'd'], 
+                    dim: ['line'] 
+                });
+            } else {
+                step1Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+            }
+        });
+        step1Blocks.push({ type: 'op', val: '→', hl: ['val'] });
+        transformed.forEach((f, idx) => {
+            if (idx > 0) {
+                step1Blocks.push({ type: 'op', val: '×', hl: ['val'] });
+            }
+            if (idx > 0 && ops[idx - 1] === '/') {
+                step1Blocks.push({ 
+                    type: 'frac', 
+                    n: '<span class="arrow-red">↗</span> ' + f.num, 
+                    d: '<span class="arrow-red">↳</span> ' + f.den, 
+                    hl: ['n', 'd'], 
+                    dim: ['line'] 
+                });
+            } else {
+                step1Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+            }
+        });
+        
+        let animDiv1 = [];
+        let d1_0 = JSON.parse(JSON.stringify(step1Blocks));
+        d1_0.forEach((b, idx) => {
+            if (idx >= 2*fractions.length && idx < step1Blocks.length) {
+                b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+            } else {
+                let isDiv = false;
+                if (b.type === 'frac') {
+                    const fracIdx = idx / 2;
+                    isDiv = fracIdx > 0 && ops[fracIdx - 1] === '/';
+                } else {
+                    const opIdx = (idx - 1) / 2;
+                    isDiv = ops[opIdx] === '/';
+                }
+                if (isDiv) {
+                    b.hl = b.type === 'frac' ? ['n', 'd'] : ['val'];
+                    if (b.type === 'frac') b.circle = ['frac'];
+                } else {
+                    b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+                }
+            }
+        });
+        animDiv1.push({ txtId: 'd1-txt-0', blocks: d1_0 });
+        
+        let d1_1 = JSON.parse(JSON.stringify(step1Blocks));
+        d1_1.forEach((b, idx) => {
+            if (idx < 2*fractions.length) {
+                if (b.type === 'frac') {
+                    const fracIdx = idx / 2;
+                    if (fracIdx > 0 && ops[fracIdx - 1] === '/') b.circle = ['frac'];
+                }
+            } else if (idx >= 2*fractions.length) {
+                const relIdx = idx - 2*fractions.length;
+                if (b.type === 'frac') {
+                    const fracIdx = relIdx / 2;
+                    if (fracIdx > 0 && ops[fracIdx - 1] === '/') b.circle = ['frac'];
+                }
+            }
+        });
+        const firstDivIdx = ops.indexOf('/');
+        animDiv1.push({ 
+            txtId: 'd1-txt-1', 
+            blocks: d1_1,
+            connector: { from: `block-${2*firstDivIdx + 2}`, to: `block-${2*fractions.length + 2*firstDivIdx + 2}`, text: 'Inverti ↻' }
+        });
+        
+        let d1_2 = JSON.parse(JSON.stringify(step1Blocks));
+        d1_2.forEach((b, idx) => {
+            if (idx < 2*fractions.length) {
+                b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+            } else {
+                b.hl = b.type === 'frac' ? ['n', 'd', 'line'] : ['val']; b.dim = [];
+                if (b.type === 'frac') b.circle = ['frac'];
+            }
+        });
+        animDiv1.push({ txtId: 'd1-txt-2', blocks: d1_2 });
+        
+        steps.push({
+            description: `<span id="d1-txt-0" class="anim-text"><strong>Passaggio 1:</strong> Trasformiamo le divisioni (÷) in <strong>moltiplicazioni (×)</strong>.</span><br>` +
+                         `<span id="d1-txt-1" class="anim-text">Per farlo, <strong>invertiamo</strong> il numeratore e il denominatore delle frazioni dopo il segno ÷.</span><br>` +
+                         `<span id="d1-txt-2" class="anim-text">Le frecce rosse mostrano lo scambio. Le moltiplicazioni esistenti rimangono invariate.</span>`,
+            blocks: step1Blocks,
+            animation: animDiv1
+        });
+    }
+    
+    let mulSteps = buildStepsMulTransformed(transformed, hasDiv ? steps.length + 1 : 1);
+    steps = steps.concat(mulSteps);
+    
+    let stepFinalBlocks = [];
+    fractions.forEach((f, idx) => {
+        if (idx > 0) {
+            const currentOp = ops[idx - 1] === '/' ? '÷' : '×';
+            stepFinalBlocks.push({ type: 'op', val: currentOp, dim: [] });
+        }
+        stepFinalBlocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
+    });
+    stepFinalBlocks.push({ type: 'op', val: '=', dim: [] });
+    stepFinalBlocks.push({ type: 'frac', n: res_n, d: res_d, hl: ['n', 'd', 'line'], dim: [] });
+    
+    let animFinal = [];
+    let f0 = JSON.parse(JSON.stringify(stepFinalBlocks));
+    f0.forEach((b, idx) => {
+        if (idx < 2*fractions.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            if (b.type === 'frac') b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animFinal.push({ txtId: 'df-txt-0', blocks: f0 });
+    
+    let f1 = JSON.parse(JSON.stringify(stepFinalBlocks));
+    f1.forEach((b, idx) => {
+        if (idx === stepFinalBlocks.length - 1) {
+            b.hl = ['n', 'd', 'line']; b.dim = [];
+            b.circle = ['frac'];
+        } else {
+            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
+        }
+    });
+    animFinal.push({ 
+        txtId: 'df-txt-1', 
+        blocks: f1,
+        connector: { from: 'block-0', to: `block-${stepFinalBlocks.length - 1}`, text: '=' }
+    });
+    
+    steps.push({
+        description: `<span id="df-txt-0" class="anim-text"><strong>Finito!</strong> L'operazione è completa.</span><br>` +
+                     `<span id="df-txt-1" class="anim-text">Il risultato finale è <strong>${res_n}/${res_d}</strong>.</span>`,
+        blocks: stepFinalBlocks,
+        animation: animFinal
+    });
+    
+    return steps;
+}
+
+function buildStepsMulTransformed(fractions, startStepIdx) {
     let res_n = fractions.reduce((acc, f) => acc * f.num, 1);
     let res_d = fractions.reduce((acc, f) => acc * f.den, 1);
     
     let numsStr = fractions.map(f => f.num).join(' × ');
     let densStr = fractions.map(f => f.den).join(' × ');
     
-    // Step 1: Numeratori
     let step1Blocks = [];
     fractions.forEach((f, idx) => {
         if (idx > 0) step1Blocks.push({ type: 'op', val: '×', hl: ['val'] });
@@ -586,7 +804,6 @@ function buildStepsMul(fractions) {
         connector: { from: `block-${2*fractions.length - 2}-n`, to: `block-${step1Blocks.length - 1}-n`, text: '=' }
     });
     
-    // Step 2: Denominatori
     let step2Blocks = [];
     fractions.forEach((f, idx) => {
         if (idx > 0) step2Blocks.push({ type: 'op', val: '×', hl: ['val'] });
@@ -626,216 +843,20 @@ function buildStepsMul(fractions) {
         connector: { from: `block-${2*fractions.length - 2}-d`, to: `block-${step2Blocks.length - 1}-d`, text: '=' }
     });
     
-    // Step 3: Finale
-    let step3Blocks = [];
-    fractions.forEach((f, idx) => {
-        if (idx > 0) step3Blocks.push({ type: 'op', val: '×', dim: [] });
-        step3Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
-    });
-    step3Blocks.push({ type: 'op', val: '=', dim: [] });
-    step3Blocks.push({ type: 'frac', n: res_n, d: res_d, hl: ['n', 'd', 'line'], dim: [] });
-    
-    let animMul3 = [];
-    let m3_0 = JSON.parse(JSON.stringify(step3Blocks));
-    m3_0.forEach((b, idx) => {
-        if (idx < 2*fractions.length - 1) {
-            b.hl = ['n', 'd', 'line']; b.dim = [];
-            if (b.type === 'frac') b.circle = ['frac'];
-        } else {
-            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
-        }
-    });
-    animMul3.push({ txtId: 'm3-txt-0', blocks: m3_0 });
-    
-    let m3_1 = JSON.parse(JSON.stringify(step3Blocks));
-    m3_1.forEach((b, idx) => {
-        if (idx === step3Blocks.length - 1) {
-            b.hl = ['n', 'd', 'line']; b.dim = [];
-            b.circle = ['frac'];
-        } else {
-            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
-        }
-    });
-    animMul3.push({ 
-        txtId: 'm3-txt-1', 
-        blocks: m3_1,
-        connector: { from: 'block-0', to: `block-${step3Blocks.length - 1}`, text: '=' }
-    });
-    
     return [
         {
-            description: `<span id="m1-txt-0" class="anim-text"><strong>Passaggio 1:</strong> Nella moltiplicazione si moltiplicano tutti i numeratori tra loro.</span><br>` +
+            description: `<span id="m1-txt-0" class="anim-text"><strong>Passaggio ${startStepIdx}:</strong> Moltiplichiamo tutti i numeratori delle frazioni:</span><br>` +
                          `<span id="m1-txt-1" class="anim-text">${numsStr} = <strong>${res_n}</strong>.</span>`,
             blocks: step1Blocks,
             animation: animMul1
         },
         {
-            description: `<span id="m2-txt-0" class="anim-text"><strong>Passaggio 2:</strong> Poi si moltiplicano tutti i denominatori tra loro.</span><br>` +
+            description: `<span id="m2-txt-0" class="anim-text"><strong>Passaggio ${startStepIdx + 1}:</strong> Moltiplichiamo tutti i denominatori delle frazioni:</span><br>` +
                          `<span id="m2-txt-1" class="anim-text">${densStr} = <strong>${res_d}</strong>.</span>`,
             blocks: step2Blocks,
             animation: animMul2
-        },
-        {
-            description: `<span id="m3-txt-0" class="anim-text"><strong>Finito!</strong> L'operazione è completa.</span><br>` +
-                         `<span id="m3-txt-1" class="anim-text">Il risultato della moltiplicazione è <strong>${res_n}/${res_d}</strong>.</span>`,
-            blocks: step3Blocks,
-            animation: animMul3
         }
     ];
-}
-
-function buildStepsDiv(fractions) {
-    let transformed = fractions.map((f, idx) => {
-        if (idx === 0) return { num: f.num, den: f.den };
-        return { num: f.den, den: f.num };
-    });
-    
-    let res_n = transformed.reduce((acc, f) => acc * f.num, 1);
-    let res_d = transformed.reduce((acc, f) => acc * f.den, 1);
-    
-    let numsStr = transformed.map(f => f.num).join(' × ');
-    let densStr = transformed.map(f => f.den).join(' × ');
-    
-    // Step 1: Inversione
-    let step1Blocks = [];
-    fractions.forEach((f, idx) => {
-        if (idx > 0) step1Blocks.push({ type: 'op', val: '÷', hl: ['val'] });
-        if (idx > 0) {
-            step1Blocks.push({ 
-                type: 'frac', 
-                n: f.num + ' <span class="arrow-red">↳</span>', 
-                d: f.den + ' <span class="arrow-red">↗</span>', 
-                hl: ['n', 'd'], 
-                dim: ['line'] 
-            });
-        } else {
-            step1Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
-        }
-    });
-    step1Blocks.push({ type: 'op', val: '→', hl: ['val'] });
-    transformed.forEach((f, idx) => {
-        if (idx > 0) step1Blocks.push({ type: 'op', val: '×', hl: ['val'] });
-        if (idx > 0) {
-            step1Blocks.push({ 
-                type: 'frac', 
-                n: '<span class="arrow-red">↗</span> ' + f.num, 
-                d: '<span class="arrow-red">↳</span> ' + f.den, 
-                hl: ['n', 'd'], 
-                dim: ['line'] 
-            });
-        } else {
-            step1Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
-        }
-    });
-    
-    let animDiv1 = [];
-    // Frame 0: Divisione originale
-    let d1_0 = JSON.parse(JSON.stringify(step1Blocks));
-    d1_0.forEach((b, idx) => {
-        if (idx >= 2*fractions.length && idx < step1Blocks.length) {
-            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
-        } else {
-            if (idx > 0) {
-                b.hl = b.type === 'frac' ? ['n', 'd'] : ['val'];
-                if (b.type === 'frac') b.circle = ['frac'];
-            }
-        }
-    });
-    animDiv1.push({ txtId: 'd1-txt-0', blocks: d1_0 });
-    
-    // Frame 1: Inversione (frecce rosse)
-    let d1_1 = JSON.parse(JSON.stringify(step1Blocks));
-    d1_1.forEach((b, idx) => {
-        if (idx > 0 && idx < 2*fractions.length && b.type === 'frac') b.circle = ['frac'];
-        if (idx >= 2*fractions.length + 1 && b.type === 'frac') b.circle = ['frac'];
-    });
-    animDiv1.push({ 
-        txtId: 'd1-txt-1', 
-        blocks: d1_1,
-        connector: { from: 'block-2', to: `block-${2*fractions.length + 2}`, text: 'Inverti ↻' }
-    });
-    
-    // Frame 2: Moltiplicazione risultante
-    let d1_2 = JSON.parse(JSON.stringify(step1Blocks));
-    d1_2.forEach((b, idx) => {
-        if (idx < 2*fractions.length) {
-            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
-        } else {
-            b.hl = b.type === 'frac' ? ['n', 'd', 'line'] : ['val']; b.dim = [];
-            if (b.type === 'frac') b.circle = ['frac'];
-        }
-    });
-    animDiv1.push({ txtId: 'd1-txt-2', blocks: d1_2 });
-    
-    let mulSteps = buildStepsMul(transformed);
-    
-    let steps = [
-        {
-            description: `<span id="d1-txt-0" class="anim-text"><strong>Passaggio 1:</strong> Per dividere le frazioni, trasformiamo le divisioni in <strong>moltiplicazioni</strong>.</span><br>` +
-                         `<span id="d1-txt-1" class="anim-text"><strong>Invertiamo</strong> le frazioni successive.</span> ` +
-                         `<span id="d1-txt-2" class="anim-text">Le frecce rosse <span style="color: var(--accent-red);"><strong>↳</strong></span> e <span style="color: var(--accent-red);"><strong>↗</strong></span> mostrano lo scambio.</span>`,
-            blocks: step1Blocks,
-            animation: animDiv1
-        }
-    ];
-    
-    steps.push({
-        description: `<span id="m1-txt-0" class="anim-text"><strong>Passaggio 2:</strong> Ora procediamo come una moltiplicazione. Moltiplichiamo i numeratori:</span><br>` +
-                     `<span id="m1-txt-1" class="anim-text">${numsStr} = <strong>${res_n}</strong>.</span>`,
-        blocks: mulSteps[0].blocks,
-        animation: mulSteps[0].animation
-    });
-    
-    steps.push({
-        description: `<span id="m2-txt-0" class="anim-text"><strong>Passaggio 3:</strong> Moltiplichiamo i denominatori delle frazioni trasformate:</span><br>` +
-                     `<span id="m2-txt-1" class="anim-text">${densStr} = <strong>${res_d}</strong>.</span>`,
-        blocks: mulSteps[1].blocks,
-        animation: mulSteps[1].animation
-    });
-    
-    let step4Blocks = [];
-    fractions.forEach((f, idx) => {
-        if (idx > 0) step4Blocks.push({ type: 'op', val: '÷', dim: [] });
-        step4Blocks.push({ type: 'frac', n: f.num, d: f.den, dim: [] });
-    });
-    step4Blocks.push({ type: 'op', val: '=', dim: [] });
-    step4Blocks.push({ type: 'frac', n: res_n, d: res_d, hl: ['n', 'd', 'line'], dim: [] });
-    
-    let animDiv4 = [];
-    let d4_0 = JSON.parse(JSON.stringify(step4Blocks));
-    d4_0.forEach((b, idx) => {
-        if (idx < 2*fractions.length - 1) {
-            b.hl = ['n', 'd', 'line']; b.dim = [];
-            if (b.type === 'frac') b.circle = ['frac'];
-        } else {
-            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
-        }
-    });
-    animDiv4.push({ txtId: 'd4-txt-0', blocks: d4_0 });
-    
-    let d4_1 = JSON.parse(JSON.stringify(step4Blocks));
-    d4_1.forEach((b, idx) => {
-        if (idx === step4Blocks.length - 1) {
-            b.hl = ['n', 'd', 'line']; b.dim = [];
-            b.circle = ['frac'];
-        } else {
-            b.hl = []; b.dim = b.type === 'frac' ? ['n', 'd', 'line'] : ['val'];
-        }
-    });
-    animDiv4.push({ 
-        txtId: 'd4-txt-1', 
-        blocks: d4_1,
-        connector: { from: 'block-0', to: `block-${step4Blocks.length - 1}`, text: '=' }
-    });
-    
-    steps.push({
-        description: `<span id="d4-txt-0" class="anim-text"><strong>Finito!</strong> L'operazione è completa.</span><br>` +
-                     `<span id="d4-txt-1" class="anim-text">Il risultato della divisione originale è <strong>${res_n}/${res_d}</strong>.</span>`,
-        blocks: step4Blocks,
-        animation: animDiv4
-    });
-    
-    return steps;
 }
 
 // --- MOTORE VISUALE ---
@@ -855,9 +876,9 @@ function parseNumericValue(val) {
 }
 
 function drawSinglePieSVG(shaded, total) {
-    const size = 180;
+    const size = 35;
     const center = size / 2;
-    const radius = size / 2 - 6; // Lascia un po' di spazio per il filtro ombra e il bordo
+    const radius = size / 2 - 2; // Lascia un po' di spazio per il filtro ombra e il bordo
     
     let paths = [];
     
@@ -919,7 +940,7 @@ function getPieSVGHTML(num, den) {
     const remainderShaded = absNum % absDen;
     const needsRemainderPie = remainderShaded > 0 || fullPiesCount === 0;
     
-    let html = '<div class="pies-row" style="display: flex; gap: 4px; justify-content: center;">';
+    let html = '<div class="pies-row" style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; width: max-content; max-width: 74px;">';
     
     for (let i = 0; i < fullPiesCount; i++) {
         html += drawSinglePieSVG(absDen, absDen);
@@ -969,6 +990,8 @@ function updatePiesRendering(blocks) {
 
 function renderBoardStructure(blocks) {
     const board = document.getElementById('step-visual');
+    const existingSvg = document.getElementById('connector-svg');
+    if (existingSvg) existingSvg.remove();
     
     blocks.forEach((b, i) => {
         let blockEl = document.getElementById(`block-${i}`);
@@ -1173,6 +1196,16 @@ function showStep(index) {
 
     setTimeout(() => {
         applyStyles(step.blocks);
+        if (step.connector) {
+            clearVisualConnectors();
+            if (Array.isArray(step.connector)) {
+                step.connector.forEach(conn => {
+                    drawVisualConnector(conn.from, conn.to, conn.text);
+                });
+            } else {
+                drawVisualConnector(step.connector.from, step.connector.to, step.connector.text);
+            }
+        }
     }, 50);
 
     const btnPrev = document.getElementById('btn-prev-step');
@@ -1230,7 +1263,11 @@ function simplifyFinalFraction(n, d, g) {
         description: `<span id="simp-txt-0" class="anim-text"><strong>Semplificazione:</strong> Dividiamo per il Massimo Comun Divisore (MCD) di ${n} e ${d}, che è <strong>${g}</strong>.</span><br>` +
                      `<span id="simp-txt-1" class="anim-text">Dividiamo sia il numeratore che il denominatore per ${g} per ottenere la frazione ridotta ai minimi termini: <strong>${simpN}/${simpD}</strong>.</span>`,
         blocks: stepSimpBlocks,
-        animation: animSimp
+        animation: animSimp,
+        connector: [
+            { from: 'block-0-n', to: 'block-2-n', text: `÷ ${g}` },
+            { from: 'block-0-d', to: 'block-2-d', text: `÷ ${g}` }
+        ]
     };
     
     // Rimuove eventuali semplificazioni precedenti per evitare duplicati
@@ -1245,21 +1282,69 @@ function simplifyFinalFraction(n, d, g) {
 
 // --- BOTTONI E UI EVENTI ---
 
+function updateGlobalOpHighlight() {
+    if (selectedOps.length === 0) return;
+    const firstOp = selectedOps[0];
+    const allSame = selectedOps.every(op => op === firstOp);
+    
+    document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('selected'));
+    if (allSame) {
+        selectedOp = firstOp;
+        const matchBtn = document.querySelector(`.op-btn[data-op="${firstOp}"]`);
+        if (matchBtn) matchBtn.classList.add('selected');
+    } else {
+        selectedOp = null; // Misto
+    }
+}
+
 document.querySelectorAll('.op-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('selected'));
         e.target.classList.add('selected');
         selectedOp = e.target.getAttribute('data-op');
         
-        let opSymbol = '+';
-        if (selectedOp === '*') opSymbol = '×';
-        else if (selectedOp === '/') opSymbol = '÷';
-        else if (selectedOp) opSymbol = selectedOp;
-        
-        document.querySelectorAll('.op-label').forEach(label => {
-            label.textContent = opSymbol;
-        });
+        // Aggiorna tutti gli operatori singoli con quello globale selezionato
+        for (let i = 0; i < selectedOps.length; i++) {
+            selectedOps[i] = selectedOp;
+            let opSymbol = selectedOp;
+            if (opSymbol === '*') opSymbol = '×';
+            else if (opSymbol === '/') opSymbol = '÷';
+            const valEl = document.getElementById(`op-val-${i}`);
+            if (valEl) valEl.textContent = opSymbol;
+        }
     });
+});
+
+// Event Delegation per frecce su/giù degli operatori singoli
+document.getElementById('fractions-row').addEventListener('click', (e) => {
+    const btn = e.target.closest('.op-arr-btn');
+    if (!btn) return;
+    
+    const index = parseInt(btn.getAttribute('data-index'), 10);
+    const isUp = btn.classList.contains('up');
+    
+    const ops = ['+', '-', '*', '/'];
+    let currentIdx = ops.indexOf(selectedOps[index]);
+    if (currentIdx === -1) currentIdx = 0;
+    
+    if (isUp) {
+        currentIdx = (currentIdx - 1 + ops.length) % ops.length;
+    } else {
+        currentIdx = (currentIdx + 1) % ops.length;
+    }
+    
+    selectedOps[index] = ops[currentIdx];
+    
+    // Aggiorna visualizzazione
+    let opSymbol = selectedOps[index];
+    if (opSymbol === '*') opSymbol = '×';
+    else if (opSymbol === '/') opSymbol = '÷';
+    
+    const valEl = document.getElementById(`op-val-${index}`);
+    if (valEl) valEl.textContent = opSymbol;
+    
+    // Aggiorna lo stato dei bottoni globali
+    updateGlobalOpHighlight();
 });
 
 document.getElementById('btn-add-fraction').addEventListener('click', () => {
@@ -1275,6 +1360,10 @@ document.getElementById('btn-remove-fraction').addEventListener('click', () => {
     if (fractionCount > 2) {
         const vals = getAndSaveValues();
         fractionCount--;
+        // Rimuove l'ultimo operatore
+        if (selectedOps.length > fractionCount - 1) {
+            selectedOps.pop();
+        }
         renderInputs();
         restoreValues(vals);
     }
@@ -1297,8 +1386,12 @@ document.getElementById('btn-analyze').addEventListener('click', () => {
         fractions.push({ num: numVal, den: denVal });
     }
 
-    if (!selectedOp) {
-        alert("Scegli un'operazione prima di continuare (+, -, ×, ÷).");
+    // Controlla se gli operatori sono misti (+/- e */÷ insieme)
+    const containsAddSub = selectedOps.some(op => op === '+' || op === '-');
+    const containsMulDiv = selectedOps.some(op => op === '*' || op === '/');
+    
+    if (containsAddSub && containsMulDiv) {
+        alert("matExplico al momento supporta espressioni contenenti solo addizioni e sottrazioni (+, -) oppure solo moltiplicazioni e divisioni (×, ÷) insieme. Evita di combinare operatori di tipo diverso.");
         return;
     }
 
@@ -1314,12 +1407,10 @@ document.getElementById('btn-analyze').addEventListener('click', () => {
     });
     document.getElementById('analysis-content').innerHTML = analysisHtml;
 
-    if (selectedOp === '+' || selectedOp === '-') {
-        currentSteps = buildStepsAddSub(fractions, selectedOp);
-    } else if (selectedOp === '*') {
-        currentSteps = buildStepsMul(fractions);
-    } else if (selectedOp === '/') {
-        currentSteps = buildStepsDiv(fractions);
+    if (containsAddSub) {
+        currentSteps = buildStepsAddSub(fractions, selectedOps);
+    } else {
+        currentSteps = buildStepsMultiplicative(fractions, selectedOps);
     }
 
     document.getElementById('phase1').classList.remove('active');
@@ -1441,6 +1532,7 @@ document.getElementById('btn-new-calc').addEventListener('click', () => {
         document.getElementById('phase1').classList.add('active');
         fractionCount = 2;
         selectedOp = null;
+        selectedOps = [];
         document.querySelectorAll('.op-btn').forEach(b => b.classList.remove('selected'));
         // Quando resettiamo il calcolo, azzeriamo anche lo stato delle torte
         showPies = false;
