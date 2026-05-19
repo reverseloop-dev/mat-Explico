@@ -420,14 +420,12 @@ div.line.highlight-blue {
 .fraction-pie-container {
     position: absolute;
     top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
     margin-top: 8px;
     z-index: 5;
     pointer-events: none;
     transition: all 0.3s ease;
-    width: 100%;
-    min-width: 80px;
     display: flex;
     justify-content: center;
 }

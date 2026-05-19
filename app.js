@@ -924,7 +924,7 @@ function drawSinglePieSVG(shaded, total) {
     }
     
     return `
-        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="filter: drop-shadow(0px 3px 6px rgba(0,0,0,0.15)); margin: 0 4px;">
+        <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="filter: drop-shadow(0px 3px 6px rgba(0,0,0,0.15)); margin: 0;">
             ${paths.join('')}
         </svg>
     `;
@@ -940,7 +940,7 @@ function getPieSVGHTML(num, den) {
     const remainderShaded = absNum % absDen;
     const needsRemainderPie = remainderShaded > 0 || fullPiesCount === 0;
     
-    let html = '<div class="pies-row" style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; width: max-content; max-width: 74px;">';
+    let html = '<div class="pies-row" style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; width: 100%;">';
     
     for (let i = 0; i < fullPiesCount; i++) {
         html += drawSinglePieSVG(absDen, absDen);
