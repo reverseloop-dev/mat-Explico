@@ -58,4 +58,4 @@ Il progetto è sviluppato in modo indipendente per passione. Idee, segnalazioni 
 * **Sviluppatore:** Laboratorio Progetti *4Lb*
 
 ---
-Contento nel loop: *"Non importa quanto vai piano, l’importante è non fermarti."*
+*"Non importa quanto vai piano, l’importante è non fermarti."*
