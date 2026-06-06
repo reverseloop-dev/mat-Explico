@@ -61,9 +61,15 @@
 
             <!-- Fase 3: Risoluzione Guidata -->
             <section id="phase3" class="phase">
-                <h2>3. Risoluzione Guidata</h2>
+                <div class="title-container">
+                    <h2>3. Risoluzione Guidata</h2>
+                    <div class="title-buttons">
+                        <button id="btn-print-steps" class="info-img-btn">🖨️ Stampa Passaggi</button>
+                    </div>
+                </div>
                 
                 <div class="calculation-board" aria-live="polite" id="step-visual-container" style="position: relative;">
+                    <div id="original-op-header" class="original-op-header"></div>
                     <div id="step-visual" class="visual-board">
                         <!-- Calcolo visuale generato dinamicamente -->
                     </div>
@@ -84,6 +90,23 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- Template nascosto per la stampa dei passaggi -->
+    <div id="print-modal" class="print-modal hidden" role="dialog">
+        <div class="print-modal-overlay"></div>
+        <div class="print-modal-content">
+            <div class="print-modal-header">
+                <h2>Passaggi del Calcolo</h2>
+                <div class="print-modal-actions">
+                    <button id="btn-print-modal-close" class="control-btn secondary">✕ Chiudi</button>
+                    <button id="btn-print-pdf" class="control-btn primary">🖨️ Stampa / Salva PDF</button>
+                </div>
+            </div>
+            <div class="print-modal-body" id="print-steps-container">
+                <!-- Popolato dinamicamente -->
+            </div>
+        </div>
     </div>
 
     <!-- Modal per visualizzazione immagini grande al centro -->
