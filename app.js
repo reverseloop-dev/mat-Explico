@@ -1973,6 +1973,7 @@ function printPDF() {
     printWindow.document.close();
 }
 
+// Collega il pulsante "Stampa Passaggi" alla apertura della modale anteprima
 document.getElementById('btn-print-steps').addEventListener('click', openPrintModal);
 document.getElementById('btn-print-modal-close').addEventListener('click', closePrintModal);
 document.getElementById('btn-print-pdf').addEventListener('click', function() {
