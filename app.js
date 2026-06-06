@@ -1973,7 +1973,7 @@ function printPDF() {
     printWindow.document.close();
 }
 
-document.getElementById('btn-print-steps').addEventListener('click', printPDF);
+document.getElementById('btn-print-steps').addEventListener('click', openPrintModal);
 document.getElementById('btn-print-modal-close').addEventListener('click', closePrintModal);
 document.getElementById('btn-print-pdf').addEventListener('click', function() {
     closePrintModal();
